@@ -1,127 +1,78 @@
-<p align="center">
-  <a>
-    <img src="https://raw.githubusercontent.com/mainsail-crew/docs/master/assets/img/logo.png" alt='Mainsail logo' height="152">
-    <h1 align="center">Mainsail</h1>
-  </a>
-</p>
-<p align="center">
-  Makes Klipper more accessible by adding a lightweight, responsive web user interface, centred around an intuitive and consistent design philosophy.
-</p>
-<p align="center">
-  <a aria-label="Downloads" href="https://github.com/mainsail-crew/mainsail/releases">
-    <img src="https://img.shields.io/github/downloads/mainsail-crew/mainsail/total?style=flat-square">
-  </a>
-  <a aria-label="Stars" href="https://github.com/mainsail-crew/mainsail/stargazers">
-    <img src="https://img.shields.io/github/stars/mainsail-crew/mainsail?style=flat-square">
-  </a>
-  <a aria-label="Forks" href="https://github.com/mainsail-crew/mainsail/network/members">
-    <img src="https://img.shields.io/github/forks/mainsail-crew/mainsail?style=flat-square">
-  </a>
-  <a href="https://hosted.weblate.org/engage/mainsail/">
-    <img src="https://hosted.weblate.org/widget/mainsail/mainsail/svg-badge.svg" alt="Übersetzungsstatus" />
-  </a>
-  <a aria-label="License" href="https://github.com/mainsail-crew/mainsail/blob/develop/LICENSE">
-    <img src="https://img.shields.io/github/license/mainsail-crew/mainsail?style=flat-square">
-  </a>
-  <a aria-label="Last commit" href="https://github.com/mainsail-crew/mainsail/commits/">
-    <img src="https://img.shields.io/github/last-commit/meteyou/mainsail?style=flat-square">
-  </a>
-  <br />
-  <a aria-label="Size" href="https://github.com/mainsail-crew/mainsail/">
-    <img src="https://img.shields.io/github/repo-size/meteyou/mainsail?style=flat-square">
-  </a>
-  <a aria-label="Discord" href="https://discord.gg/skWTwTD">
-    <img src="https://img.shields.io/discord/758059413700345988?color=%235865F2&label=discord&logo=discord&logoColor=white&style=flat-square">
-  </a>
-  <a aria-label="Patreon" href="https://www.patreon.com/meteyou">
-    <img src="https://img.shields.io/endpoint.svg?url=https%3A%2F%2Fshieldsio-patreon.vercel.app%2Fapi%3Fusername%3Dmeteyou%26type%3Dpatrons&style=flat-square">
-  </a>
-</p>
+# Mainsail + KAPAT
 
-## Getting Started
+This is a personal fork of [Mainsail](https://github.com/mainsail-crew/mainsail)
+(based on v2.18.2), with a native **KAPAT** tab added to the sidebar for
+running and reviewing [KAPAT](https://github.com/vzagranichnyy/KAPAT)
+pressure-advance calibration sweeps directly from the printer's web UI.
 
-Visit [docs.mainsail.xyz/setup](https://docs.mainsail.xyz/setup) to get started with Mainsail.
+Not affiliated with the mainsail-crew project. All credit for the base
+UI goes to them — see [LICENSE](LICENSE) (AGPL-3.0, unchanged) and their
+own docs at [docs.mainsail.xyz](https://docs.mainsail.xyz).
 
-Mainsail is also available in remote mode on [http://my.mainsail.xyz](http://my.mainsail.xyz). Find
-out [more](https://docs.mainsail.xyz/setup#mymainsailxyz).
+## What's added on top of stock Mainsail
 
-## Documentation
+- A **КАРАТ / KAPAT** sidebar entry (route `/kapat-tab`): sweep form,
+  filament profile picker (with a saved calibration X/Y/Z position),
+  a history table of past sweeps, and an expert-mode analysis view
+  (raw segment browser, per-metric K trend grid, fitted-line results).
+- Talks to the same Klipper webhook backend as the standalone KAPAT
+  web UI — both are just front-ends over the [KAPAT Klipper
+  extra](https://github.com/vzagranichnyy/KAPAT).
+- A fix to the shared `NumberInput.vue` component: typed values used to
+  be silently reverted on blur unless Enter was pressed. Fixed via an
+  opt-in `commit-on-blur` prop, used only by KAPAT's own inputs — every
+  other call site keeps its original behavior.
 
-Visit [docs.mainsail.xyz](https://docs.mainsail.xyz) to view the full documentation.  
-You can find the latest release notes [here](https://github.com/mainsail-crew/mainsail/releases).
+## Install
 
-## Screenshots
+This is a custom fork, so the usual Mainsail installers (KIAUH,
+mainsail-crew's release zip) won't pull it in — build and deploy it
+manually.
 
-![screenshot-dashboard](https://raw.githubusercontent.com/mainsail-crew/docs/master/assets/img/screenshot.png)
-![Features](https://raw.githubusercontent.com/mainsail-crew/docs/master/assets/img/features.png)
+**1. Klipper backend** (needed for the KAPAT tab to actually do
+anything — without it the tab loads but every request fails):
 
-## Features
+```bash
+git clone https://github.com/vzagranichnyy/KAPAT.git
+cd KAPAT
+./install.sh
+```
 
-- **Responsive Web Interface:** _Optimized for desktops, tablets and mobile devices_
-- **Printer Farm:** _Supports multiple 3D printers_
-- **[Localization](https://docs.mainsail.xyz/features/localization):** _Choose between 12 different languages_
-- **File Manager:** _Delete, rename and upload your G-Code and config files_
-- **File Editor:** _Edit G-Code and config files with syntax highlighting in your browser_
-- **[Print History](https://docs.mainsail.xyz/features/history):** _See your previous prints and their status_
-- **[Statistics](https://docs.mainsail.xyz/features/history):** _View how much time your printer has been in use and the number of jobs that have succeeded or failed_
-- **Job Queue:** _Queue multiple jobs and add them directly from your slicer_
-- **[Temperature Presets](https://docs.mainsail.xyz/features/presets):** _Manage different temperature presets for easy preheating_
-- **[Bed Mesh Visualisation](https://docs.mainsail.xyz/features/bedmesh):** _View your bed using a 3D mesh graph_
-- **G-Code Viewer:** _View a 3D render of your print and follow the progress_
-- **Multi-Webcam Support:** _View your print from different angles with multiple webcams_
-- **Timelapse Integration:** _Automatically record a timelapse of your print using [moonraker-timelapse](https://github.com/mainsail-crew/moonraker-timelapse)_
-- **Power Control:** _Control power devices such as relays, TP-Link and Tasmota devices, and more_
-- **Powerful Macro-Management:** _Manage your macros on a micro level_
-- **[Configurable Dashboard](https://docs.mainsail.xyz/features/dashboard-organisation):** _Create your own personal dashboard_
-- **[Theming Support](https://docs.mainsail.xyz/features/theming):** _Customizable user interface including logos, backgrounds, and custom CSS_
-- **[Additional Sensors](https://docs.mainsail.xyz/quicktips/additional-sensors):** _Add extra sensors to the temperature graph_
-- **Exclude Objects:** _Exclude parts of your print <sup>(not officially supported by Klipper yet)</sup>_
+Then add a `[kapat]` section to `printer.cfg` (see
+`docs/printer.cfg.example` in that repo) and restart Klipper.
 
-## Help and Support
+**2. This UI:**
 
-Do you need help or just want to talk? Join our active community on [Discord](https://discord.gg/skWTwTD)!
+Requires Node `^20.19.0` or `>=22.12.0` — check `node --version` first;
+most Klipper hosts ship an older system Node, in which case install a
+separate matching Node build rather than relying on the system one.
 
-Did you find a bug or did you thought of a feature?
-Please create an [Issue](https://github.com/mainsail-crew/mainsail/issues) in GitHub and let us know.
+```bash
+git clone https://github.com/vzagranichnyy/Mainsail-Kapat.git
+cd Mainsail-Kapat
+npm install
+npm run build
+rsync -a --delete dist/ ~/mainsail/
+```
 
-## Official Sponsors
+`npm run build`'s own `build.zip` sub-step packages `dist/` into
+`mainsail.zip` and will fail harmlessly with `zip: not found` on hosts
+without the `zip` binary installed — safe to ignore, since the rsync
+step above deploys the raw `dist/` folder directly, never the zip.
 
-<p align='center'>
-    <img src="https://raw.githubusercontent.com/mainsail-crew/docs/master/assets/img/logo-bigtreetech.png" alt='Mainsail logo' width="150">
-</p>
+`~/mainsail/` should match whatever directory your nginx config serves
+Mainsail from (`root` in the relevant `location` block) — if a stock
+Mainsail was previously installed via KIAUH, that's already the path
+in use, so no nginx changes are needed; this just replaces its
+contents.
 
-**BIGTREETECH** is the official mainboard partner of Mainsail. BIGTREETECH is committed to developing innovative and competitive products to better serve the 3D printing community.
+## Development
 
-## Support Mainsail
+```bash
+npm install
+npm run serve
+```
 
-Mainsail is primarily developed and maintained by meteyou. To keep the project going he invests his free time, almost
-every day. To motivate him (☕🍺😜) there are several ways to support him:
-
-[![patreon](https://img.shields.io/badge/patreon-participate-yellow.svg?style=flat-square)](https://www.patreon.com/meteyou)
-[![kofi](https://img.shields.io/badge/buy%20me%20a%20coffee-donate-yellow.svg?style=flat-square)](https://ko-fi.com/mainsail)
-
-## Contributing
-
-Contributions to Mainsail are always welcome!
-
-- 📥 Pull requests and 🌟 Stars are always welcome.
-- Read our [contributing guidelines](CONTRIBUTING.md) to get started,
-  or find us on [Discord](https://discord.gg/mainsail), we will take the time to guide you.
-
-Looking for a first issue to tackle?
-
-- We tag issues with [![Good First Issue](https://img.shields.io/github/issues/mainsail-crew/mainsail/good%20first%20issue.svg)](https://github.com/mainsail-crew/mainsail/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22) when we think they are well suited for people who are new to the codebase or OSS in general.
-- [Talk to us](https://discord.gg/mainsail), we'll find something that suits your skills and learning interest.
-
-## Credit, sources and inspiration
-
-- [Kevin O'Connor](https://github.com/KevinOConnor) for the awesome 3D printer firmware [Klipper](https://github.com/KevinOConnor/klipper)
-- [Eric Callahan (arksine)](https://github.com/Arksine) for [Moonraker (Klipper API)](https://github.com/Arksine/moonraker). Without Moonraker, Mainsail would not be possible.
-- [lixxbox](https://github.com/lixxbox) for the Mainsail logo & Docs
-- [Vue.js](https://vuejs.org/): The Progressive JavaScript Framework
-- [Vuetify](https://vuetifyjs.com/): Material Design Component Framework for Vue.js
-
-Massive thanks to the whole [Voron Design](http://vorondesign.com/) community. Without them such a project would not be
-possible.
-
-[Full Credits & License information](https://docs.mainsail.xyz/credits)
+See [agent_docs/ARCHITECTURE.md](agent_docs/ARCHITECTURE.md) and the
+other files under [agent_docs/](agent_docs/) for a tour of the
+codebase conventions this fork still follows from upstream.
