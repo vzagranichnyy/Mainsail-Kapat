@@ -26,8 +26,7 @@ own docs at [docs.mainsail.xyz](https://docs.mainsail.xyz).
 ## Install
 
 This is a custom fork, so the usual Mainsail installers (KIAUH,
-mainsail-crew's release zip) won't pull it in — build and deploy it
-manually.
+mainsail-crew's release zip) won't pull it in.
 
 **1. Klipper backend** (needed for the KAPAT tab to actually do
 anything — without it the tab loads but every request fails):
@@ -41,11 +40,22 @@ cd KAPAT
 Then add a `[kapat]` section to `printer.cfg` (see
 `docs/printer.cfg.example` in that repo) and restart Klipper.
 
-**2. This UI:**
+**2. This UI** — two options:
 
-Requires Node `^20.19.0` or `>=22.12.0` — check `node --version` first;
-most Klipper hosts ship an older system Node, in which case install a
-separate matching Node build rather than relying on the system one.
+**Option A — pre-built (no Node needed):** the `release` branch's root
+*is* the built output (like a `gh-pages` branch), rebuilt and
+force-pushed whenever the source changes. Just clone it and copy:
+
+```bash
+git clone -b release --single-branch https://github.com/vzagranichnyy/Mainsail-Kapat.git mainsail-dist
+rsync -a --delete mainsail-dist/ ~/mainsail/
+```
+
+**Option B — build from source:** needed if you're modifying the code
+yourself. Requires Node `^20.19.0` or `>=22.12.0` — check `node
+--version` first; most Klipper hosts ship an older system Node, in
+which case install a separate matching Node build rather than relying
+on the system one.
 
 ```bash
 git clone https://github.com/vzagranichnyy/Mainsail-Kapat.git
@@ -60,11 +70,11 @@ rsync -a --delete dist/ ~/mainsail/
 without the `zip` binary installed — safe to ignore, since the rsync
 step above deploys the raw `dist/` folder directly, never the zip.
 
-`~/mainsail/` should match whatever directory your nginx config serves
-Mainsail from (`root` in the relevant `location` block) — if a stock
-Mainsail was previously installed via KIAUH, that's already the path
-in use, so no nginx changes are needed; this just replaces its
-contents.
+Either way, `~/mainsail/` should match whatever directory your nginx
+config serves Mainsail from (`root` in the relevant `location` block)
+— if a stock Mainsail was previously installed via KIAUH, that's
+already the path in use, so no nginx changes are needed; this just
+replaces its contents.
 
 ## Development
 
