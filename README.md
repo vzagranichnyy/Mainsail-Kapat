@@ -6,7 +6,7 @@ running and reviewing [KAPAT](https://github.com/vzagranichnyy/KAPAT)
 pressure-advance calibration sweeps directly from the printer's web UI.
 
 Not affiliated with the mainsail-crew project. All credit for the base
-UI goes to them — see [LICENSE](LICENSE) (AGPL-3.0, unchanged) and their
+UI goes to them — see [LICENSE](LICENSE) (GPL-3.0, unchanged) and their
 own docs at [docs.mainsail.xyz](https://docs.mainsail.xyz).
 
 ## What's added on top of stock Mainsail
