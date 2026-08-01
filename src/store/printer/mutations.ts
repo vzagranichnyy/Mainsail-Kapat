@@ -8,7 +8,26 @@ export const mutations: MutationTree<PrinterState> = {
         const defaultState = getDefaultState()
 
         for (const key of Object.keys(state)) {
-            if (!(key in defaultState) && key !== 'tempHistory') {
+            // 'kapat' isn't a Mainsail-native object (it's only present
+            // because Klipper's own printer.objects.list generically
+            // includes whatever klippy_extras register, see
+            // initSubscripts()) so it's never in getDefaultState() --
+            // without this exemption it got wiped by a plain `delete`
+            // on every reconnect/klippy-ready reset. Vue 2 can't detect
+            // property removal via plain `delete` (only Vue.delete()),
+            // so nothing watching this key got notified of the wipe --
+            // but the *later* re-subscription re-adds it via Vue.set(),
+            // creating a brand-new reactive property with a fresh,
+            // unrelated dependency. Any watcher that had already
+            // subscribed to the old 'kapat' property (e.g. KAPAT's own
+            // sweep-completion detector) silently stopped receiving any
+            // future updates for it at all, permanently, for the rest
+            // of that page's lifetime -- confirmed live: KAPAT history
+            // logging worked for exactly one sweep per page load (the
+            // one before the first reconnect) and silently stopped
+            // after that, with real completed sweeps in Klipper's own
+            // log but nothing making it into history.json.
+            if (!(key in defaultState) && key !== 'tempHistory' && key !== 'kapat') {
                 delete state[key]
             }
         }

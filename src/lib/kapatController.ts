@@ -191,13 +191,26 @@ async function logHistory(): Promise<void> {
 }
 
 function onSweepingChange(sweeping: boolean): void {
+    // Kept permanently, not just for this investigation -- this area
+    // (detecting sweep completion reliably enough to log history) has
+    // broken silently more than once, and a plain debug-level trace of
+    // every edge this poll detects is cheap insurance against the next
+    // one being just as hard to reproduce.
+    window.console.debug(`[kapat] sweeping -> ${sweeping} (was ${wasSweeping})`)
     if (wasSweeping && !sweeping) {
         // A cancelled sweep also makes `sweeping` go false, but
         // kapatStatus.last was never updated for this run -- it's
         // still whatever the previous successful sweep left there.
         // Without this check, logHistory() would re-log that stale
         // result as if a new sweep had just completed.
-        if (!kapatSweepState.cancelled && getKapatStatus().last?.k_opt != null) logHistory()
+        if (!kapatSweepState.cancelled && getKapatStatus().last?.k_opt != null) {
+            logHistory().then(
+                () => window.console.debug('[kapat] history entry saved'),
+                (err) => window.console.error('[kapat] failed to save history entry', err)
+            )
+        } else {
+            window.console.debug('[kapat] sweep end: not logging (cancelled, or no k_opt yet)')
+        }
         kapatSweepState.cancelled = false
         clearPersistedSweepState()
         Vue.$socket.emitAndWait('printer.gcode.script', { script: 'M104 S0' }).catch(() => {})
@@ -209,13 +222,29 @@ function onSweepingChange(sweeping: boolean): void {
 // Called from created() of every KAPAT-touching component -- the full
 // tab (Kapat.vue) AND every dashboard mini-panel. Idempotent (guarded
 // by `initialized`), so it doesn't matter which one mounts first or
-// how many are mounted at once: the store-level watch below is
-// registered exactly once for the app's whole lifetime. This matters
-// because up to 3 independent dashboard panels (load chart, sweep
-// form, profile picker) can all be visible on screen simultaneously --
-// unlike Kapat.vue's old per-component @Watch('sweeping'), which would
-// have fired once per mounted panel and logged 2-3 duplicate history
+// how many are mounted at once: the poll below is registered exactly
+// once for the app's whole lifetime. This matters because up to 3
+// independent dashboard panels (load chart, sweep form, profile
+// picker) can all be visible on screen simultaneously -- unlike
+// Kapat.vue's old per-component @Watch('sweeping'), which would have
+// fired once per mounted panel and logged 2-3 duplicate history
 // entries for a single completed sweep if copied naively into each one.
+//
+// A plain 1s poll rather than `store.watch(() => isKapatSweeping(),
+// cb)` -- confirmed live that the watch approach silently stops
+// working after the *first* sweep completes each page load, and only
+// the first. Root cause: `printer/mutations.ts`'s `reset()` (which
+// re-runs on every websocket reconnect, and a KAPAT_SWEEP long enough
+// to trip Mainsail's own 10s socket heartbeat WILL reconnect mid-sweep)
+// used a plain `delete state.kapat` for any key not in its default
+// state shape -- Vue 2 can't track property removal via plain `delete`,
+// and the *later* re-subscription re-adds 'kapat' as a brand-new
+// reactive property with a fresh dependency, orphaning any watcher
+// still subscribed to the old one. Fixed at the source too (see that
+// mutation's own comment) but polling here doesn't depend on getting
+// every future Mainsail-core reconnect-handling edge case right --
+// each tick just re-reads the current value fresh, no stale dependency
+// possible by construction.
 export function ensureKapatController(store: Store<RootState>): void {
     storeRef = store
     if (initialized) return
@@ -247,10 +276,17 @@ export function ensureKapatController(store: Store<RootState>): void {
             if (s.calibZ !== undefined) kapatController.calibZ = s.calibZ
         })
         .catch(() => {})
-    store.watch(
-        () => isKapatSweeping(),
-        (sweeping: boolean) => onSweepingChange(sweeping)
-    )
+    // 250ms, not 1s -- confirmed live that an artificially short test
+    // (a couple of K values, 1 cycle each) can start and finish inside
+    // a single 1s gap, meaning neither poll tick ever observes
+    // `sweeping === true` and the true->false edge is never detected
+    // at all. A real calibration run is realistically much longer than
+    // that, but there's no reason to leave the race narrower than it
+    // needs to be for the cost of one extra boolean check per tick.
+    window.setInterval(() => {
+        const sweeping = isKapatSweeping()
+        if (sweeping !== wasSweeping) onSweepingChange(sweeping)
+    }, 250)
 }
 
 export function handleLoadParams(params: KapatSweepParams): void {
