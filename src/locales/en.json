@@ -497,7 +497,8 @@
             "HeatBody": "The nozzle will be heated to {temp}°C before the sweep starts."
         },
         "LiveChart": {
-            "Title": "Live Force",
+            "Title": "Load",
+            "AxisLabel": "Load [g]",
             "Buffer": "Buffer",
             "Smooth": "Smooth",
             "SmoothWindow": "Smoothing window"
@@ -922,6 +923,15 @@
                 "Detected": "detected",
                 "Empty": "empty"
             }
+        },
+        "KapatLoadPanel": {
+            "Headline": "Load"
+        },
+        "KapatSweepPanel": {
+            "Headline": "Pressure Advance Calibration"
+        },
+        "KapatProfilePanel": {
+            "Headline": "Filament Profile"
         },
         "MmuPanel": {
             "Active": "Active",

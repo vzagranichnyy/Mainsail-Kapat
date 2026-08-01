@@ -16,6 +16,9 @@ import {
     mdiWebcam,
     mdiAdjust,
     mdiMulticast,
+    mdiSineWave,
+    mdiTune,
+    mdiPalette,
 } from '@mdi/js'
 import { afcIconLogo } from '@/plugins/afcIcons'
 
@@ -79,6 +82,12 @@ export default class DashboardMixin extends BaseMixin {
                 return mdiMulticast
             case 'afc':
                 return afcIconLogo
+            case 'kapat-load':
+                return mdiSineWave
+            case 'kapat-sweep':
+                return mdiTune
+            case 'kapat-profile':
+                return mdiPalette
 
             default:
                 return mdiInformation

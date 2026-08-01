@@ -1,5 +1,5 @@
 <template>
-    <panel :title="$t('Kapat.ProfilePicker.Title')" card-class="kapat-profile-picker" :margin-bottom="false">
+    <panel :title="$t('Kapat.ProfilePicker.Title')" card-class="kapat-profile-picker" :margin-bottom="false" :collapsible="collapsible">
         <v-card-text v-if="loading">
             <span class="text--disabled">{{ $t('Kapat.ProfilePicker.Loading') }}</span>
         </v-card-text>
@@ -255,6 +255,7 @@ export default class KapatProfilePicker extends Mixins(BaseMixin) {
     @Prop({ required: true }) declare readonly calibZ: number
     @Prop({ default: false }) declare readonly sweeping: boolean
     @Prop({ default: null }) declare readonly lastKOpt: number | null
+    @Prop({ type: Boolean, default: false }) declare readonly collapsible: boolean
 
     private readonly KEY = 'profiles'
     private readonly LAST_PROFILE_KEY = 'kapat-last-profile-id'

@@ -86,6 +86,9 @@ import AfcPanel from '@/components/panels/AfcPanel.vue'
 import ExtruderControlPanel from '@/components/panels/ExtruderControlPanel.vue'
 import DashboardMixin from '@/components/mixins/dashboard'
 import KlippyStatePanel from '@/components/panels/KlippyStatePanel.vue'
+import KapatLoadPanel from '@/components/panels/KapatLoadPanel.vue'
+import KapatSweepPanel from '@/components/panels/KapatSweepPanel.vue'
+import KapatProfilePanel from '@/components/panels/KapatProfilePanel.vue'
 import LedEffectsPanel from '@/components/panels/LedEffectsPanel.vue'
 import MachineSettingsPanel from '@/components/panels/MachineSettingsPanel.vue'
 import MacrogroupPanel from '@/components/panels/MacrogroupPanel.vue'
@@ -105,6 +108,9 @@ import WebcamPanel from '@/components/panels/WebcamPanel.vue'
         AfcPanel,
         ExtruderControlPanel,
         KlippyStatePanel,
+        KapatLoadPanel,
+        KapatSweepPanel,
+        KapatProfilePanel,
         LedEffectsPanel,
         MachineSettingsPanel,
         MacrogroupPanel,

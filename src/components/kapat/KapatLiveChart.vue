@@ -1,5 +1,5 @@
 <template>
-    <panel :title="$t('Kapat.LiveChart.Title')" card-class="kapat-live-chart" :margin-bottom="true">
+    <panel :title="$t('Kapat.LiveChart.Title')" card-class="kapat-live-chart" :margin-bottom="true" :collapsible="collapsible">
         <template #buttons>
             <v-menu :offset-y="true" :close-on-content-click="false">
                 <template #activator="{ on, attrs }">
@@ -15,7 +15,7 @@
                         <span class="text--disabled" style="font-size: 0.78rem">
                             {{ $t('Kapat.LiveChart.SmoothWindow') }}: {{ avgWindowMs }}ms
                         </span>
-                        <v-slider v-model="avgWindowMs" min="0" max="400" step="10" :disabled="!smoothEnabled" hide-details dense style="width: 220px" />
+                        <v-slider v-model="avgWindowMs" min="0" max="1000" step="20" :disabled="!smoothEnabled" hide-details dense style="width: 220px" />
                     </v-list-item>
                     <v-list-item class="minHeight36 flex-column align-start">
                         <span class="text--disabled" style="font-size: 0.78rem">{{ $t('Kapat.LiveChart.Buffer') }}: {{ bufferSeconds }}s</span>
@@ -24,7 +24,10 @@
                 </v-list>
             </v-menu>
         </template>
-        <div ref="container" class="kapat-chart-wrap"></div>
+        <div class="kapat-chart-wrap">
+            <span class="text--disabled kapat-chart-axis-label">{{ $t('Kapat.LiveChart.AxisLabel') }}</span>
+            <div ref="container" class="kapat-chart-canvas"></div>
+        </div>
     </panel>
 </template>
 
@@ -32,6 +35,7 @@
 import Component from 'vue-class-component'
 import { Mixins, Prop, Watch } from 'vue-property-decorator'
 import BaseMixin from '@/components/mixins/base'
+import ThemeMixin from '@/components/mixins/theme'
 import { KlippyBridge } from '@/lib/kapatBridge'
 import uPlot from 'uplot'
 import 'uplot/dist/uPlot.min.css'
@@ -40,9 +44,10 @@ import { mdiCog } from '@mdi/js'
 const CHART_HEIGHT = 224
 
 @Component
-export default class KapatLiveChart extends Mixins(BaseMixin) {
+export default class KapatLiveChart extends Mixins(BaseMixin, ThemeMixin) {
     @Prop({ required: true }) declare readonly bridge: KlippyBridge
     @Prop({ default: 'load_cell' }) declare readonly sensorName: string
+    @Prop({ type: Boolean, default: false }) declare readonly collapsible: boolean
 
     mdiCog = mdiCog
 
@@ -85,13 +90,20 @@ export default class KapatLiveChart extends Mixins(BaseMixin) {
         this.$store.dispatch('gui/saveSetting', { name: 'view.kapatChart.bufferSeconds', value })
     }
 
+    // Axis chrome (grid lines, tick labels) reuses the same
+    // theme-derived colors as Mainsail's own TempChart.vue
+    // (fgColorFaint/fgColorLow via ThemeMixin) so this chart reads as
+    // part of the same visual system instead of a bolted-on widget with
+    // its own hardcoded palette. `smoothed` uses Vuetify's theme
+    // `success` color -- the same green used everywhere else in
+    // Mainsail for a positive/good readout -- per explicit request to
+    // match "the green from Mainsail" instead of KAPAT's own tan/brown.
     get colors() {
-        const dark = this.$vuetify.theme.dark
         return {
-            muted: dark ? '#8a8d91' : '#5f6368',
-            grid: dark ? '#2c2f33' : '#dcdfe3',
+            muted: this.fgColorLow,
+            grid: this.fgColorFaint,
             raw: 'rgba(201,138,82,0.2)',
-            smoothed: dark ? '#e0b98c' : '#b3701f',
+            smoothed: this.$vuetify.theme.currentTheme.success as string,
         }
     }
 
@@ -106,8 +118,14 @@ export default class KapatLiveChart extends Mixins(BaseMixin) {
         this.subscribedSensor = this.sensorName
     }
 
+    // The raw trace is only useful as a reference while smoothing is
+    // off -- with it on, the raw series' own noise visually swamps the
+    // clean averaged line sitting inside it (spikes all around the main
+    // curve), so hide the raw series whenever the smoothed one is shown
+    // instead of layering both.
     @Watch('smoothEnabled')
     onSmoothToggle(show: boolean): void {
+        this.plot?.setSeries(1, { show: !show })
         this.plot?.setSeries(2, { show })
         this.dirty = true
     }
@@ -180,11 +198,11 @@ export default class KapatLiveChart extends Mixins(BaseMixin) {
                 scales: { x: { time: false } },
                 axes: [
                     { stroke: c.muted, grid: { stroke: c.grid } },
-                    { stroke: c.muted, grid: { stroke: c.grid }, label: 'force (g)' },
+                    { stroke: c.muted, grid: { stroke: c.grid } },
                 ],
                 series: [
                     {},
-                    { label: 'force', stroke: c.raw, width: 1, points: { show: false } },
+                    { label: 'force', stroke: c.raw, width: 1, points: { show: false }, show: !this.smoothEnabled },
                     { label: 'smoothed', stroke: c.smoothed, width: 2, points: { show: false }, show: this.smoothEnabled },
                 ],
             },
@@ -224,7 +242,24 @@ export default class KapatLiveChart extends Mixins(BaseMixin) {
 
 <style scoped>
 .kapat-chart-wrap {
+    position: relative;
     width: 100%;
     height: 224px;
+}
+.kapat-chart-canvas {
+    width: 100%;
+    height: 100%;
+}
+/* Positioned like ECharts' yAxis.name in TempChart.vue (top-left,
+   "Name [unit]") instead of uPlot's own rotated axis label, so this
+   chart's header reads the same way as the temperature chart next to
+   it on the main dashboard. */
+.kapat-chart-axis-label {
+    position: absolute;
+    top: 4px;
+    left: 48px;
+    font-size: 0.7rem;
+    pointer-events: none;
+    z-index: 1;
 }
 </style>

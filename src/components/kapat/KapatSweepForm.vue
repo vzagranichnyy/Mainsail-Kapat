@@ -1,5 +1,5 @@
 <template>
-    <panel :title="$t('Kapat.SweepForm.Title')" card-class="kapat-sweep-form" :margin-bottom="false">
+    <panel :title="$t('Kapat.SweepForm.Title')" card-class="kapat-sweep-form" :margin-bottom="false" :collapsible="collapsible">
         <template #buttons>
             <v-btn text small @click="resetDefaults">{{ $t('Kapat.SweepForm.Reset') }}</v-btn>
         </template>
@@ -159,6 +159,7 @@ export default class KapatSweepForm extends Mixins(BaseMixin) {
     @Prop({ required: true }) declare readonly params: KapatSweepParams
     @Prop({ type: Boolean, default: false }) declare readonly disabled: boolean
     @Prop({ type: Boolean, default: false }) declare readonly sweeping: boolean
+    @Prop({ type: Boolean, default: false }) declare readonly collapsible: boolean
 
     onSubmit({ name, value }: { name: string; value: number }): void {
         this.$emit('update:params', { ...this.params, [name]: value })

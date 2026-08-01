@@ -78,6 +78,9 @@ export const getDefaultState = (): GuiState => {
                 { name: 'miscellaneous', visible: true },
                 { name: 'temperature', visible: true },
                 { name: 'miniconsole', visible: false },
+                { name: 'kapat-load', visible: true },
+                { name: 'kapat-sweep', visible: true },
+                { name: 'kapat-profile', visible: true },
             ],
             tabletLayout1: [
                 { name: 'webcam', visible: true },
@@ -90,6 +93,9 @@ export const getDefaultState = (): GuiState => {
             tabletLayout2: [
                 { name: 'temperature', visible: true },
                 { name: 'miniconsole', visible: true },
+                { name: 'kapat-load', visible: true },
+                { name: 'kapat-sweep', visible: true },
+                { name: 'kapat-profile', visible: true },
             ],
             desktopLayout1: [
                 { name: 'webcam', visible: true },
@@ -102,6 +108,9 @@ export const getDefaultState = (): GuiState => {
             desktopLayout2: [
                 { name: 'temperature', visible: true },
                 { name: 'miniconsole', visible: true },
+                { name: 'kapat-load', visible: true },
+                { name: 'kapat-sweep', visible: true },
+                { name: 'kapat-profile', visible: true },
             ],
             widescreenLayout1: [
                 { name: 'toolhead-control', visible: true },
@@ -112,6 +121,9 @@ export const getDefaultState = (): GuiState => {
             widescreenLayout2: [
                 { name: 'temperature', visible: true },
                 { name: 'machine-settings', visible: true },
+                { name: 'kapat-load', visible: true },
+                { name: 'kapat-sweep', visible: true },
+                { name: 'kapat-profile', visible: true },
             ],
             widescreenLayout3: [
                 { name: 'webcam', visible: true },
@@ -289,7 +301,23 @@ export const getDefaultState = (): GuiState => {
             },
             kapatChart: {
                 smoothEnabled: true,
-                avgWindowMs: 80,
+                // 80ms produced a visibly jittery line once the raw
+                // noisy trace was hidden behind it (see KapatLiveChart's
+                // onSmoothToggle) -- there was nothing left to visually
+                // "average out" the residual jaggedness against.
+                // Confirmed live on real hardware: even 400ms still
+                // showed a real sawtooth wobble with the nozzle
+                // completely idle, and only ~1500ms read as fully flat.
+                // Didn't default to that, though -- a real sweep's
+                // fastest leg is 0.25s (tfast), so a 1.5s window would
+                // average clean across several whole rise/fall cycles
+                // and blur out exactly the shape this chart exists to
+                // show *during* a test. 600ms is a middle ground:
+                // meaningfully calmer at idle than 400ms without
+                // smearing a 250-1000ms step response into mush. The
+                // slider's own max was raised to 1000ms so idle-only
+                // viewing can still be pushed calmer by hand.
+                avgWindowMs: 600,
                 bufferSeconds: 12,
             },
             tempchart: {

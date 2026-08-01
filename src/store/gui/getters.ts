@@ -106,6 +106,11 @@ export const getters: GetterTree<GuiState, RootState> = {
             allPanels = allPanels.filter((name) => name !== 'led-effects')
         }
 
+        // remove the KAPAT dashboard panels, if no [kapat] section exists in Klipper
+        if (rootState.printer?.kapat === undefined) {
+            allPanels = allPanels.filter((name) => !['kapat-load', 'kapat-sweep', 'kapat-profile'].includes(name))
+        }
+
         return allPanels
     },
 

@@ -1,0 +1,368 @@
+// Shared KAPAT state + sweep orchestration, extracted out of Kapat.vue
+// so it can be used both by the full KAPAT tab (Kapat.vue) AND by
+// independent mini-panels on the main dashboard (KapatLoadPanel /
+// KapatSweepPanel / KapatProfilePanel) -- these are separate,
+// unrelated component instances (no shared parent other than the
+// dashboard page itself), so a plain component-instance `data()` field
+// wouldn't be visible across them. `Vue.observable()` makes this a
+// genuinely shared, reactive singleton instead -- selecting a profile
+// in one panel updates sweepParams that another panel reads, exactly
+// like when they were props on one page.
+//
+// `i18n`/`Vue.$socket` are used directly here (their underlying plain
+// instances, not `this.$t`/`this.$socket`) since this module has no
+// Vue component instance of its own. The Vuex store, deliberately, is
+// NOT statically imported here (see setStore()'s comment below) --
+// each component passes its own `this.$store` in instead.
+import Vue from 'vue'
+import type { Store } from 'vuex'
+import i18n from '@/plugins/i18n'
+import { KlippyBridge } from './kapatBridge'
+import { loadList, saveList } from './kapatData'
+import { buildApplyCommand, buildSweepCommand, KapatSweepParams } from './kapatGcode'
+import { BdKResult } from './kapatBdCost'
+import { kapatSweepState, persistSweepState, clearPersistedSweepState } from './kapatSweepState'
+import type { RootState } from '@/store/types'
+
+export interface KapatStatus {
+    has_load_cell?: boolean
+    load_cell_name?: string
+    activity?: { state?: string }
+    last?: {
+        k_opt?: number
+        k_opt_source?: string
+        applied?: boolean
+        bd_per_k?: BdKResult[]
+        bd_weights?: Record<string, number>
+        [key: string]: unknown
+    }
+}
+
+interface KapatHistoryEntry {
+    id: string
+    time: string
+    temp: number | null
+    kOpt: number | null
+    source?: string
+    applied?: boolean
+    params: KapatSweepParams | null
+    filament: string | null
+    filamentType?: string
+    brand?: string
+    color?: string
+}
+
+const DEFAULT_SWEEP_PARAMS: KapatSweepParams = {
+    vfr: 19.24,
+    vfrLow: 1.92,
+    tslow: 1.0,
+    tfast: 0.25,
+    cycles: 8,
+    kstart: 0.0,
+    kend: 0.08,
+    kstep: 0.005,
+    wobble: 0.05,
+}
+
+export interface KapatControllerState {
+    bridge: KlippyBridge
+    sweepParams: KapatSweepParams
+    profileLabel: string
+    profileTemp: number
+    profileFilamentType: string
+    profileBrand: string
+    profileColor: string
+    profileId: string
+    calibX: number
+    calibY: number
+    calibZ: number
+    preflightBusy: boolean
+    // Transient override for a status line, used only while an
+    // imperative action (preflight homing/heating, apply) is in flight
+    // or just failed -- see Kapat.vue's original comment (still true
+    // here): `null` falls back to a computed idle/running readout.
+    actionStatus: string | null
+    actionError: boolean
+    confirmVisible: boolean
+    confirmTitle: string
+    confirmText: string
+}
+
+// Kapat.vue (and this module along with it) is imported *eagerly* by
+// routes/index.ts to build the route table, which runs at app
+// bootstrap. An earlier version of this file also did `import store
+// from '@/store'` at the top level, which closed a real circular
+// dependency (routes/index.ts -> Kapat.vue -> this module -> '@/store'
+// -> store/actions.ts -> '@/plugins/router' -> routes/index.ts) and left
+// the router with an empty route table app-wide. That's now fixed by
+// threading the store in via ensureKapatController()'s argument instead
+// of importing it here (see storeRef below) -- plain object/class
+// construction below has no such dependency and is safe to do eagerly:
+// `new KlippyBridge()` only stores hostname/port in its constructor, it
+// doesn't open the socket until `.connect()`, which stays deferred to
+// ensureKapatController() same as before.
+//
+// (A previous attempt at this wrapped the state in a lazy-init Proxy
+// with only `get`/`set` traps. That broke Vue's own `.sync`/`Vue.set`
+// machinery, which relies on `in`/`ownKeys` reflection to decide
+// whether a property already exists -- those fell through to the
+// Proxy's empty placeholder target instead of the real state, so
+// updates from KapatSweepForm/KapatProfilePicker silently vanished.
+// Confirmed live: editing a sweep param and saving a profile kept
+// writing the *default* value to disk even though the input visibly
+// showed the edited one. Plain eager construction has none of that.)
+export const kapatController: KapatControllerState = Vue.observable({
+    bridge: new KlippyBridge(),
+    sweepParams: { ...DEFAULT_SWEEP_PARAMS },
+    profileLabel: '',
+    profileTemp: 210,
+    profileFilamentType: '',
+    profileBrand: '',
+    profileColor: '',
+    profileId: '',
+    calibX: 0,
+    calibY: 0,
+    calibZ: 10,
+    preflightBusy: false,
+    actionStatus: null,
+    actionError: false,
+    confirmVisible: false,
+    confirmTitle: '',
+    confirmText: '',
+})
+
+let confirmResolver: ((value: boolean) => void) | null = null
+let initialized = false
+let wasSweeping = false
+
+// The Vuex store instance, captured from whichever component calls
+// ensureKapatController() first (every KAPAT-touching component does,
+// in created() -- see below) instead of `import store from '@/store'`
+// at this module's top level. A static import of `@/store` here used
+// to close a real circular-dependency loop: routes/index.ts eagerly
+// imports Kapat.vue (to build the route table) -> this module ->
+// '@/store' -> store/actions.ts -> '@/plugins/router' -> routes/index.ts.
+// In that cycle, `@/plugins/router.ts`'s `import routes from
+// '@/routes'` resolved to `undefined` at the moment `new VueRouter(...)`
+// ran (routes/index.ts's own module body hadn't finished yet), so the
+// router ended up with an EMPTY route table app-wide -- confirmed via
+// `router.getRoutes()` -- with no thrown exception anywhere to point at
+// it. Every component already has a `this.$store` reference available
+// at `created()` time regardless of import order, so threading it in
+// as a plain argument sidesteps the whole problem.
+let storeRef: Store<RootState> | null = null
+
+export function getKapatStatus(): KapatStatus {
+    return (storeRef?.state.printer?.kapat as KapatStatus) ?? {}
+}
+
+export function isKapatSweeping(): boolean {
+    const state = getKapatStatus().activity?.state
+    return !!state && state !== 'idle'
+}
+
+export function kapatHasData(): boolean {
+    return storeRef?.state.printer?.kapat !== undefined
+}
+
+export function setStatus(text: string, isError = false): void {
+    kapatController.actionStatus = text
+    kapatController.actionError = isError
+}
+
+async function logHistory(): Promise<void> {
+    const status = getKapatStatus()
+    const entry: KapatHistoryEntry = {
+        id: `${Date.now()}`,
+        time: new Date().toISOString(),
+        temp: (storeRef?.state.printer?.extruder?.temperature as number | undefined) ?? null,
+        kOpt: status.last?.k_opt ?? null,
+        source: status.last?.k_opt_source,
+        applied: status.last?.applied,
+        params: kapatSweepState.params,
+        filament: kapatSweepState.label || null,
+        filamentType: kapatSweepState.filamentType || undefined,
+        brand: kapatSweepState.brand || undefined,
+        color: kapatSweepState.color || undefined,
+    }
+    const list = await loadList<KapatHistoryEntry>(kapatController.bridge, 'history')
+    list.unshift(entry)
+    await saveList(kapatController.bridge, 'history', list.slice(0, 200))
+}
+
+function onSweepingChange(sweeping: boolean): void {
+    if (wasSweeping && !sweeping) {
+        // A cancelled sweep also makes `sweeping` go false, but
+        // kapatStatus.last was never updated for this run -- it's
+        // still whatever the previous successful sweep left there.
+        // Without this check, logHistory() would re-log that stale
+        // result as if a new sweep had just completed.
+        if (!kapatSweepState.cancelled && getKapatStatus().last?.k_opt != null) logHistory()
+        kapatSweepState.cancelled = false
+        clearPersistedSweepState()
+        Vue.$socket.emitAndWait('printer.gcode.script', { script: 'M104 S0' }).catch(() => {})
+        kapatController.actionStatus = null
+    }
+    wasSweeping = sweeping
+}
+
+// Called from created() of every KAPAT-touching component -- the full
+// tab (Kapat.vue) AND every dashboard mini-panel. Idempotent (guarded
+// by `initialized`), so it doesn't matter which one mounts first or
+// how many are mounted at once: the store-level watch below is
+// registered exactly once for the app's whole lifetime. This matters
+// because up to 3 independent dashboard panels (load chart, sweep
+// form, profile picker) can all be visible on screen simultaneously --
+// unlike Kapat.vue's old per-component @Watch('sweeping'), which would
+// have fired once per mounted panel and logged 2-3 duplicate history
+// entries for a single completed sweep if copied naively into each one.
+export function ensureKapatController(store: Store<RootState>): void {
+    storeRef = store
+    if (initialized) return
+    initialized = true
+    wasSweeping = isKapatSweeping()
+    if (!wasSweeping) {
+        // No sweep is actually running right now according to the
+        // printer -- any snapshot sitting in kapatSweepState (restored
+        // from localStorage by its own module-load merge) is stale
+        // leftover from a sweep that already finished (and got logged,
+        // or errored out) while nothing was open to consume and clear
+        // it. Don't let it get mistakenly attached to some future,
+        // unrelated sweep.
+        clearPersistedSweepState()
+        kapatSweepState.label = ''
+        kapatSweepState.filamentType = ''
+        kapatSweepState.brand = ''
+        kapatSweepState.color = ''
+        kapatSweepState.profileId = ''
+        kapatSweepState.params = null
+    }
+    kapatController.bridge.connect()
+    kapatController.bridge
+        .getData('settings')
+        .then((res) => {
+            const s = (res?.value as Record<string, number>) || {}
+            if (s.calibX !== undefined) kapatController.calibX = s.calibX
+            if (s.calibY !== undefined) kapatController.calibY = s.calibY
+            if (s.calibZ !== undefined) kapatController.calibZ = s.calibZ
+        })
+        .catch(() => {})
+    store.watch(
+        () => isKapatSweeping(),
+        (sweeping: boolean) => onSweepingChange(sweeping)
+    )
+}
+
+export function handleLoadParams(params: KapatSweepParams): void {
+    kapatController.sweepParams = { ...kapatController.sweepParams, ...params }
+}
+
+export function showConfirm(title: string, text: string): Promise<boolean> {
+    kapatController.confirmTitle = title
+    kapatController.confirmText = text
+    kapatController.confirmVisible = true
+    return new Promise((resolve) => {
+        confirmResolver = resolve
+    })
+}
+
+export function onConfirmAction(): void {
+    confirmResolver?.(true)
+    confirmResolver = null
+}
+
+export function onConfirmVisibleChange(visible: boolean): void {
+    if (!visible && confirmResolver) {
+        confirmResolver(false)
+        confirmResolver = null
+    }
+}
+
+async function runGcode(script: string): Promise<void> {
+    await Vue.$socket.emitAndWait('printer.gcode.script', { script })
+}
+
+// Home (with confirmation, since it moves the toolhead) if needed, move
+// to the configured calibration position, then heat (also with
+// confirmation, since it's a wait that can take a couple of minutes) if
+// the nozzle is cold -- before finally issuing KAPAT_SWEEP itself.
+// Agreeing to the homing confirmation already implies "go ahead and
+// prep the printer", so the heat confirmation is skipped when homing
+// was just confirmed, and only shown on its own if the printer was
+// already homed.
+export async function handleStart(params: KapatSweepParams, resetChart?: () => void): Promise<void> {
+    const status = getKapatStatus()
+    if (!status.has_load_cell) {
+        setStatus(i18n.t('Kapat.Status.NoLoadCell') as string, true)
+        return
+    }
+    if (kapatController.preflightBusy || isKapatSweeping()) return
+    kapatController.preflightBusy = true
+    try {
+        const homedAxes = (storeRef?.state.printer?.toolhead?.homed_axes as string | undefined) ?? ''
+        const homed = ['x', 'y', 'z'].every((a) => homedAxes.includes(a))
+        let justHomed = false
+        if (!homed) {
+            const ok = await showConfirm(i18n.t('Kapat.Confirm.HomeTitle') as string, i18n.t('Kapat.Confirm.HomeBody') as string)
+            if (!ok) return
+            justHomed = true
+            setStatus(i18n.t('Kapat.Status.Homing') as string)
+            await runGcode('G28')
+        }
+
+        setStatus(i18n.t('Kapat.Status.Moving') as string)
+        await runGcode(`G1 X${kapatController.calibX} Y${kapatController.calibY} Z${kapatController.calibZ} F3000`)
+
+        const extruderTemp = (storeRef?.state.printer?.extruder?.temperature as number | undefined) ?? null
+        const targetTemp = kapatController.profileTemp || 210
+        if (extruderTemp == null || extruderTemp < targetTemp - 5) {
+            if (!justHomed) {
+                const ok = await showConfirm(
+                    i18n.t('Kapat.Confirm.HeatTitle') as string,
+                    i18n.t('Kapat.Confirm.HeatBody', { temp: targetTemp }) as string
+                )
+                if (!ok) return
+            }
+            setStatus(i18n.t('Kapat.Status.Heating', { temp: targetTemp }) as string)
+            await runGcode(`M109 S${targetTemp}`)
+        }
+
+        resetChart?.()
+        // Snapshot into the module-level singleton, not just this
+        // controller's own state -- kapatSweepState specifically exists
+        // to survive Vue Router destroying/recreating whichever page is
+        // watching, and a mid-sweep page reload (see kapatSweepState.ts).
+        //
+        // label/filamentType/brand/color are ALSO snapshotted by
+        // KapatProfilePicker itself (from its own authoritative data,
+        // the moment it observes `sweeping` actually go true -- see its
+        // onSweepingChange/snapshotForSweep). That path is more
+        // reliable than this controller's own *mirrored* copies
+        // (profileLabel etc.), but a real sweep on real hardware still
+        // ended up with `filament: null` in history despite both paths
+        // supposedly covering it -- root cause not fully nailed down.
+        // Writing here too is deliberately redundant/defensive.
+        kapatSweepState.params = params
+        kapatSweepState.label = kapatController.profileLabel
+        kapatSweepState.filamentType = kapatController.profileFilamentType
+        kapatSweepState.brand = kapatController.profileBrand
+        kapatSweepState.color = kapatController.profileColor
+        kapatSweepState.profileId = kapatController.profileId
+        persistSweepState()
+        setStatus(i18n.t('Kapat.Status.SweepStarting') as string)
+        const cmd = buildSweepCommand({ ...params, filament: kapatController.profileLabel })
+        runGcode(cmd).catch((err: Error) => {
+            setStatus(i18n.t('Kapat.Status.SweepFailed', { err: err.message }) as string, true)
+        })
+    } catch (err) {
+        setStatus(i18n.t('Kapat.Status.SweepFailed', { err: (err as Error).message }) as string, true)
+    } finally {
+        kapatController.preflightBusy = false
+    }
+}
+
+export function handleApply(k: number): void {
+    runGcode(buildApplyCommand(k))
+        .then(() => setStatus(i18n.t('Kapat.Status.Applied', { k: Number(k).toFixed(4) }) as string))
+        .catch((err: Error) => setStatus(i18n.t('Kapat.Status.ApplyFailed', { err: err.message }) as string, true))
+}

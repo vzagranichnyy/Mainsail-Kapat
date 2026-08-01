@@ -121,6 +121,9 @@ export const allDashboardPanels = [
     'mmu',
     'temperature',
     'webcam',
+    'kapat-load',
+    'kapat-sweep',
+    'kapat-profile',
 ]
 
 export const thumbnailSmallMin = 30

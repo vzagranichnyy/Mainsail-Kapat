@@ -497,7 +497,8 @@
             "HeatBody": "Сопло будет нагрето до {temp}°C перед началом свипа."
         },
         "LiveChart": {
-            "Title": "Сила в реальном времени",
+            "Title": "Нагрузка",
+            "AxisLabel": "Нагрузка [г]",
             "Buffer": "Буфер",
             "Smooth": "Сглаживание",
             "SmoothWindow": "Окно сглаживания"
@@ -920,6 +921,15 @@
                 "Detected": "Присутствует",
                 "Empty": "Отсутствует"
             }
+        },
+        "KapatLoadPanel": {
+            "Headline": "Нагрузка"
+        },
+        "KapatSweepPanel": {
+            "Headline": "Калибровка Pressure Advance"
+        },
+        "KapatProfilePanel": {
+            "Headline": "Профиль филамента"
         },
         "MmuPanel": {
             "Active": "Активный",
