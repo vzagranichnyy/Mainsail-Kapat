@@ -14,7 +14,9 @@
         <v-row>
             <v-col cols="12" md="8">
                 <kapat-sweep-form
+                    :bridge="bridge"
                     :disabled="sweeping || preflightBusy"
+                    :sweeping="sweeping"
                     :params.sync="sweepParams"
                     @start="handleStart" />
             </v-col>
@@ -27,9 +29,12 @@
                     :filament-type.sync="profileFilamentType"
                     :brand.sync="profileBrand"
                     :color.sync="profileColor"
+                    :profile-id.sync="profileId"
                     :calib-x.sync="calibX"
                     :calib-y.sync="calibY"
                     :calib-z.sync="calibZ"
+                    :sweeping="sweeping"
+                    :last-k-opt="kapatStatus.last && kapatStatus.last.k_opt != null ? kapatStatus.last.k_opt : null"
                     @apply="handleApply"
                     @loadParams="handleLoadParams" />
             </v-col>
@@ -83,7 +88,7 @@ import { KlippyBridge } from '@/lib/kapatBridge'
 import { loadList, saveList } from '@/lib/kapatData'
 import { buildApplyCommand, buildSweepCommand, KapatSweepParams } from '@/lib/kapatGcode'
 import { BdKResult } from '@/lib/kapatBdCost'
-import { kapatSweepState } from '@/lib/kapatSweepState'
+import { kapatSweepState, persistSweepState, clearPersistedSweepState } from '@/lib/kapatSweepState'
 
 interface KapatStatus {
     has_load_cell?: boolean
@@ -135,6 +140,7 @@ export default class PageKapat extends Mixins(BaseMixin) {
     profileFilamentType = ''
     profileBrand = ''
     profileColor = ''
+    profileId = ''
     wasSweeping = false
 
     calibX = 0
@@ -169,6 +175,22 @@ export default class PageKapat extends Mixins(BaseMixin) {
         // `onSweepingChange`'s `wasSweeping && !sweeping` check and
         // logHistory() silently never runs at all.
         this.wasSweeping = this.sweeping
+        if (!this.sweeping) {
+            // No sweep is actually running right now according to the
+            // printer -- any snapshot sitting in kapatSweepState (restored
+            // from localStorage by the module-load merge, see
+            // kapatSweepState.ts) is stale leftover from a sweep that
+            // already finished (and got logged, or errored out) while no
+            // tab was open to consume and clear it. Don't let it get
+            // mistakenly attached to some future, unrelated sweep.
+            clearPersistedSweepState()
+            kapatSweepState.label = ''
+            kapatSweepState.filamentType = ''
+            kapatSweepState.brand = ''
+            kapatSweepState.color = ''
+            kapatSweepState.profileId = ''
+            kapatSweepState.params = null
+        }
         this.bridge.connect()
         this.bridge
             .getData('settings')
@@ -228,7 +250,14 @@ export default class PageKapat extends Mixins(BaseMixin) {
     @Watch('sweeping')
     onSweepingChange(sweeping: boolean): void {
         if (this.wasSweeping && !sweeping) {
-            if (this.kapatStatus.last?.k_opt != null) this.logHistory()
+            // A cancelled sweep also makes `sweeping` go false, but
+            // kapatStatus.last was never updated for this run -- it's
+            // still whatever the previous successful sweep left there.
+            // Without this check, logHistory() would re-log that stale
+            // result as if a new sweep had just completed.
+            if (!kapatSweepState.cancelled && this.kapatStatus.last?.k_opt != null) this.logHistory()
+            kapatSweepState.cancelled = false
+            clearPersistedSweepState()
             this.$socket.emitAndWait('printer.gcode.script', { script: 'M104 S0' }).catch(() => {})
             this.actionStatus = null
         }
@@ -336,11 +365,26 @@ export default class PageKapat extends Mixins(BaseMixin) {
             // Router if the user navigates away and back before the
             // sweep finishes (see kapatSweepState.ts), and logHistory()
             // needs this exact snapshot to still be there when it does.
+            //
+            // label/filamentType/brand/color are ALSO snapshotted by
+            // KapatProfilePicker itself (from its own authoritative
+            // data, the moment it observes `sweeping` actually go true --
+            // see its onSweepingChange/snapshotForSweep). That path is
+            // more reliable than this component's own *mirrored* copies
+            // (profileLabel etc., populated by a child->parent `.sync`
+            // emit chain), but a real sweep on real hardware still ended
+            // up with `filament: null` in history despite both paths
+            // supposedly covering it -- root cause not fully nailed down.
+            // Writing here too is deliberately redundant/defensive:
+            // whichever of the two sources is actually reliable in
+            // practice still gets the data into kapatSweepState.
             kapatSweepState.params = params
             kapatSweepState.label = this.profileLabel
             kapatSweepState.filamentType = this.profileFilamentType
             kapatSweepState.brand = this.profileBrand
             kapatSweepState.color = this.profileColor
+            kapatSweepState.profileId = this.profileId
+            persistSweepState()
             this.setStatus(this.$t('Kapat.Status.SweepStarting') as string)
             const cmd = buildSweepCommand({ ...params, filament: this.profileLabel })
             this.runGcode(cmd).catch((err: Error) => {

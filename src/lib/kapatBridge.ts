@@ -151,6 +151,15 @@ export class KlippyBridge {
         return this.call('kapat/delete_all_captures', {})
     }
 
+    /** Flips a flag cmd_KAPAT_SWEEP's own loop checks every cycle -- see
+     * that command's docstring for why this has to be a webhook and not
+     * a second gcode command (the gcode queue is sequential; a new
+     * command sent while KAPAT_SWEEP is still running would just queue
+     * up and only run once the sweep already finished). */
+    cancelSweep(): Promise<unknown> {
+        return this.call('kapat/cancel_sweep', {})
+    }
+
     get connected(): boolean {
         return this._connected
     }

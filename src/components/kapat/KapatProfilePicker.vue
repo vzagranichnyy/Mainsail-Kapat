@@ -179,6 +179,7 @@ import BaseMixin from '@/components/mixins/base'
 import { KlippyBridge } from '@/lib/kapatBridge'
 import { loadList, saveList } from '@/lib/kapatData'
 import { KapatSweepParams } from '@/lib/kapatGcode'
+import { kapatSweepState, persistSweepState } from '@/lib/kapatSweepState'
 
 interface KapatProfile {
     id: string
@@ -252,8 +253,11 @@ export default class KapatProfilePicker extends Mixins(BaseMixin) {
     @Prop({ required: true }) declare readonly calibX: number
     @Prop({ required: true }) declare readonly calibY: number
     @Prop({ required: true }) declare readonly calibZ: number
+    @Prop({ default: false }) declare readonly sweeping: boolean
+    @Prop({ default: null }) declare readonly lastKOpt: number | null
 
     private readonly KEY = 'profiles'
+    private readonly LAST_PROFILE_KEY = 'kapat-last-profile-id'
 
     profiles: KapatProfile[] = []
     loading = true
@@ -268,6 +272,12 @@ export default class KapatProfilePicker extends Mixins(BaseMixin) {
     confirming = false
     calibStatusMsg = ''
     calibStatusIsError = false
+    // Seeded from the `sweeping` prop in created() (mirrors Kapat.vue's
+    // own wasSweeping pattern) -- needed to detect the true->false
+    // completion edge even if this component gets recreated (Vue Router
+    // destroys Kapat.vue and everything under it on navigation) while a
+    // sweep is already running.
+    wasSweeping = false
 
     // There's no free-text name field anymore -- the label shown in
     // history/gcode is derived straight from type + brand, so it always
@@ -310,6 +320,10 @@ export default class KapatProfilePicker extends Mixins(BaseMixin) {
         return [{ value: '', text: this.$t('Kapat.ProfilePicker.New') }, ...items]
     }
 
+    created(): void {
+        this.wasSweeping = this.sweeping
+    }
+
     mounted(): void {
         window.addEventListener('focus', this.load)
     }
@@ -323,10 +337,108 @@ export default class KapatProfilePicker extends Mixins(BaseMixin) {
         if (this.bridge) this.load()
     }
 
+    // Mirrors Kapat.vue's own label/filamentType/brand/color mirroring --
+    // lets Kapat.vue snapshot which profile was selected into
+    // kapatSweepState at sweep-start time (see handleStart there). Needs
+    // `immediate` so a *restored* selection (see `load()` below) is
+    // mirrored up right away too, not just on the next manual change.
+    @Watch('selectedId', { immediate: true })
+    onSelectedIdChange(value: string): void {
+        this.$emit('update:profileId', value)
+    }
+
+    // Persisted to localStorage on every *real* change (deliberately NOT
+    // `immediate` -- an immediate firing runs during component creation
+    // with `selectedId`'s freshly-initialized default (''), which would
+    // overwrite the very value `load()` below still needs to read for
+    // restoration, before `load()`'s own `await` even gets a chance to
+    // run. Plain idle navigation away from the KAPAT tab and back (no
+    // sweep running) still destroys/recreates this component via Vue
+    // Router the same way kapatSweepState's scenario does; users
+    // reasonably expect their selected profile to just still be there.
+    // localStorage survives that, and a full page reload too.
+    @Watch('selectedId')
+    onSelectedIdChangePersist(value: string): void {
+        window.localStorage.setItem(this.LAST_PROFILE_KEY, value)
+    }
+
+    // If this component gets recreated mid-sweep (Vue Router destroying
+    // Kapat.vue and everything under it on navigation), `selectedId`
+    // resets to '' ("New profile") and every derived field along with
+    // it -- visibly reverting the card, and losing track of which
+    // profile the in-flight sweep's result should eventually be saved
+    // back into. Restore the selection from kapatSweepState.profileId
+    // (set by Kapat.vue right before issuing KAPAT_SWEEP) once the
+    // profiles list has loaded, same idea as kapatSweepState's other
+    // fields already surviving recreation for history-logging.
     async load(): Promise<void> {
         this.loading = true
         this.profiles = await loadList<KapatProfile>(this.bridge, this.KEY)
         this.loading = false
+        if (this.selectedId) return
+        // kapatSweepState.profileId (a sweep is actually in flight) takes
+        // priority over the plain last-selected-id fallback below, since
+        // it reflects what the *current* sweep needs, not just whatever
+        // was selected before the page happened to get recreated.
+        const restoreId = kapatSweepState.profileId || window.localStorage.getItem(this.LAST_PROFILE_KEY) || ''
+        if (restoreId && this.profiles.some((p) => p.id === restoreId)) {
+            this.selectProfile(restoreId)
+        }
+    }
+
+    // `sweeping` false->true: the sweep genuinely just started (Klipper's
+    // own status, not just "the Start button was clicked") -- snapshot
+    // this component's own authoritative filament fields into
+    // kapatSweepState right now, from source, rather than having
+    // Kapat.vue snapshot its *mirrored* copies of them (profileLabel
+    // etc.), which depend on this component's `.sync` emits having
+    // already caught up by the time Kapat.vue's handleStart() runs.
+    // That dependency proved fragile in practice (a real sweep logged an
+    // empty filamentType/brand/color to history despite a profile
+    // clearly being selected in the UI at the time) -- reading `this.*`
+    // directly here has no such gap.
+    //
+    // `sweeping` true->false: the sweep just finished -- write the
+    // resulting K back into whichever profile was selected when the
+    // sweep *started* (kapatSweepState.profileId, not necessarily
+    // `this.selectedId`, which could differ if the user changed the
+    // selection while the sweep was still running). Mirrors the removed
+    // "use last sweep result" button, but automatic instead of a manual
+    // click.
+    @Watch('sweeping')
+    onSweepingChange(sweeping: boolean): void {
+        if (!this.wasSweeping && sweeping) this.snapshotForSweep()
+        if (this.wasSweeping && !sweeping) this.saveResultToProfile()
+        this.wasSweeping = sweeping
+    }
+
+    // Only overwrites fields that are actually non-empty here -- Kapat.vue
+    // (handleStart) also snapshots these from its own mirrored copies as
+    // a redundant safety net (see the comment there for why: this path
+    // alone wasn't reliably enough on real hardware). Blindly overwriting
+    // with whatever's in `this.*` here, even if empty, could stomp
+    // perfectly good data Kapat.vue already wrote moments earlier.
+    snapshotForSweep(): void {
+        if (this.selectedId) kapatSweepState.profileId = this.selectedId
+        if (this.derivedLabel) kapatSweepState.label = this.derivedLabel
+        if (this.filamentType) kapatSweepState.filamentType = this.filamentType
+        if (this.brand) kapatSweepState.brand = this.brand
+        if (this.color) kapatSweepState.color = this.color
+        persistSweepState()
+    }
+
+    async saveResultToProfile(): Promise<void> {
+        const id = kapatSweepState.profileId
+        kapatSweepState.profileId = ''
+        if (!id || this.lastKOpt == null) return
+        const idx = this.profiles.findIndex((p) => p.id === id)
+        if (idx === -1) return
+        const rounded = Number(this.lastKOpt.toFixed(3))
+        this.profiles = this.profiles.map((p, i) => (i === idx ? { ...p, pa: rounded } : p))
+        await this.persist()
+        if (this.selectedId === id) this.pa = rounded
+        this.statusMsg = this.$t('Kapat.ProfilePicker.MsgSaved') as string
+        this.statusIsError = false
     }
 
     async persist(): Promise<void> {

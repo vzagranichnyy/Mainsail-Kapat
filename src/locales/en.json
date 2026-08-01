@@ -515,7 +515,8 @@
             "KMax": "K max",
             "KStep": "K step",
             "Start": "Start calibration",
-            "Running": "Calibrating..."
+            "Running": "Calibrating...",
+            "Cancel": "Cancel"
         },
         "ProfilePicker": {
             "Title": "Filament Profile",

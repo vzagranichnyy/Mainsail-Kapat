@@ -121,7 +121,10 @@
                             commit-on-blur
                             @submit="onSubmit" />
                     </div>
-                    <v-btn block color="primary" :disabled="disabled" @click="start">
+                    <v-btn v-if="sweeping" block color="error" @click="cancel">
+                        {{ $t('Kapat.SweepForm.Cancel') }}
+                    </v-btn>
+                    <v-btn v-else block color="primary" :disabled="disabled" @click="start">
                         {{ disabled ? $t('Kapat.SweepForm.Running') : $t('Kapat.SweepForm.Start') }}
                     </v-btn>
                 </v-col>
@@ -135,6 +138,8 @@ import Component from 'vue-class-component'
 import { Mixins, Prop } from 'vue-property-decorator'
 import BaseMixin from '@/components/mixins/base'
 import { KapatSweepParams } from '@/lib/kapatGcode'
+import { KlippyBridge } from '@/lib/kapatBridge'
+import { kapatSweepState } from '@/lib/kapatSweepState'
 
 const DEFAULTS: KapatSweepParams = {
     vfr: 19.24,
@@ -150,8 +155,10 @@ const DEFAULTS: KapatSweepParams = {
 
 @Component
 export default class KapatSweepForm extends Mixins(BaseMixin) {
+    @Prop({ required: true }) declare readonly bridge: KlippyBridge
     @Prop({ required: true }) declare readonly params: KapatSweepParams
     @Prop({ type: Boolean, default: false }) declare readonly disabled: boolean
+    @Prop({ type: Boolean, default: false }) declare readonly sweeping: boolean
 
     onSubmit({ name, value }: { name: string; value: number }): void {
         this.$emit('update:params', { ...this.params, [name]: value })
@@ -159,6 +166,16 @@ export default class KapatSweepForm extends Mixins(BaseMixin) {
 
     start(): void {
         this.$emit('start', this.params)
+    }
+
+    cancel(): void {
+        kapatSweepState.cancelled = true
+        this.bridge.cancelSweep().catch(() => {
+            // Best-effort -- if this specific call fails the user can
+            // just click Cancel again, and cmd_KAPAT_SWEEP's loop only
+            // needs the flag to eventually be seen, not this particular
+            // request to succeed.
+        })
     }
 
     resetDefaults(): void {
