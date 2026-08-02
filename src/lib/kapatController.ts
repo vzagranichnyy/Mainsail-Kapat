@@ -322,6 +322,18 @@ export function ensureKapatController(store: Store<RootState>): void {
         const sweeping = isKapatSweeping()
         if (sweeping !== wasSweeping) onSweepingChange(sweeping)
     }, 250)
+    // (No beforeunload guard here anymore -- there used to be one,
+    // warning against closing the tab mid home->heat->sweep sequence.
+    // That sequence is now entirely server-side (see
+    // cmd_KAPAT_SWEEP's TARGET_TEMP handling / _prepare_for_sweep in
+    // klipper_extras/kapat/__init__.py), so the risk it existed for --
+    // stranding the printer homed/heated with the sweep itself never
+    // issued because the browser tab that would send it had closed --
+    // no longer exists. Removed rather than left in as harmless
+    // caution: it would have kept firing for the entire confirm-dialog
+    // wait too (preflightBusy is true from the moment Start is clicked,
+    // not just while a command is actually in flight), warning the user
+    // even when closing the tab genuinely loses nothing.)
 }
 
 export function handleLoadParams(params: KapatSweepParams): void {
@@ -353,14 +365,27 @@ async function runGcode(script: string): Promise<void> {
     await Vue.$socket.emitAndWait('printer.gcode.script', { script })
 }
 
-// Home (with confirmation, since it moves the toolhead) if needed, move
-// to the configured calibration position, then heat (also with
-// confirmation, since it's a wait that can take a couple of minutes) if
-// the nozzle is cold -- before finally issuing KAPAT_SWEEP itself.
-// Agreeing to the homing confirmation already implies "go ahead and
-// prep the printer", so the heat confirmation is skipped when homing
-// was just confirmed, and only shown on its own if the printer was
-// already homed.
+// Confirmation dialogs only -- the actual home/move/heat sequence now
+// happens entirely server-side inside cmd_KAPAT_SWEEP itself (see
+// klipper_extras/kapat/__init__.py's _prepare_for_sweep(), passed
+// TARGET_TEMP= below), NOT by this function awaiting G28/G1/M109 one
+// at a time the way it used to. That used to mean the whole
+// home->move->heat->sweep sequence was orchestrated by *this page's
+// own JavaScript* -- exactly the kind of multi-step sequence every
+// other Mainsail feature implements as one server-side macro
+// (PRINT_START and friends), never as a chain of browser-issued
+// commands. Confirmed live: closing the browser tab right after
+// confirming the heat-up dialog left the nozzle heated with no
+// calibration ever having started, since the JavaScript that would
+// have sent KAPAT_SWEEP next no longer existed anywhere once the tab
+// closed. Moving the actual sequence server-side means that's no
+// longer possible -- once KAPAT_SWEEP is sent, Klipper runs the whole
+// thing to completion regardless of what the browser does afterward.
+//
+// The confirmation UX is unchanged: agreeing to the homing confirm
+// still implies "go ahead and prep the printer", so the heat confirm
+// is skipped when homing was just confirmed, shown on its own only if
+// the printer was already homed.
 export async function handleStart(params: KapatSweepParams, resetChart?: () => void): Promise<void> {
     const status = getKapatStatus()
     if (!status.has_load_cell) {
@@ -381,25 +406,16 @@ export async function handleStart(params: KapatSweepParams, resetChart?: () => v
             const ok = await showConfirm(i18n.t('Kapat.Confirm.HomeTitle') as string, i18n.t('Kapat.Confirm.HomeBody') as string)
             if (!ok) return
             justHomed = true
-            setStatus(i18n.t('Kapat.Status.Homing') as string)
-            await runGcode('G28')
         }
-
-        setStatus(i18n.t('Kapat.Status.Moving') as string)
-        await runGcode(`G1 X${kapatController.calibX} Y${kapatController.calibY} Z${kapatController.calibZ} F3000`)
 
         const extruderTemp = (storeRef?.state.printer?.extruder?.temperature as number | undefined) ?? null
         const targetTemp = kapatController.profileTemp || 210
-        if (extruderTemp == null || extruderTemp < targetTemp - 5) {
-            if (!justHomed) {
-                const ok = await showConfirm(
-                    i18n.t('Kapat.Confirm.HeatTitle') as string,
-                    i18n.t('Kapat.Confirm.HeatBody', { temp: targetTemp }) as string
-                )
-                if (!ok) return
-            }
-            setStatus(i18n.t('Kapat.Status.Heating', { temp: targetTemp }) as string)
-            await runGcode(`M109 S${targetTemp}`)
+        if (!justHomed && (extruderTemp == null || extruderTemp < targetTemp - 5)) {
+            const ok = await showConfirm(
+                i18n.t('Kapat.Confirm.HeatTitle') as string,
+                i18n.t('Kapat.Confirm.HeatBody', { temp: targetTemp }) as string
+            )
+            if (!ok) return
         }
 
         resetChart?.()
@@ -425,7 +441,7 @@ export async function handleStart(params: KapatSweepParams, resetChart?: () => v
         kapatSweepState.profileId = kapatController.profileId
         persistSweepState()
         setStatus(i18n.t('Kapat.Status.SweepStarting') as string)
-        const cmd = buildSweepCommand({ ...params, filament: kapatController.profileLabel })
+        const cmd = buildSweepCommand({ ...params, filament: kapatController.profileLabel, targetTemp })
         runGcode(cmd).catch((err: Error) => {
             setStatus(i18n.t('Kapat.Status.SweepFailed', { err: err.message }) as string, true)
         })

@@ -19,6 +19,13 @@ export interface KapatSweepParams {
     accel?: number
     apply?: boolean
     filament?: string
+    // Not a sweep param the user edits in the form -- the selected
+    // profile's own temp field, passed through so the backend can home/
+    // move/heat entirely server-side before running the sweep. See
+    // cmd_KAPAT_SWEEP's TARGET_TEMP handling and kapatController.ts's
+    // handleStart() for why this moved out of the web UI's own
+    // orchestration.
+    targetTemp?: number
 }
 
 const PARAM_MAP: Record<string, string> = {
@@ -50,6 +57,9 @@ export function buildSweepCommand(params: KapatSweepParams): string {
         // __init__.py's _save_capture slugifies into anyway.
         const safe = params.filament.trim().replace(/[^A-Za-z0-9_+-]+/g, '_')
         if (safe) parts.push(`FILAMENT=${safe}`)
+    }
+    if (params.targetTemp != null) {
+        parts.push(`TARGET_TEMP=${params.targetTemp}`)
     }
     return parts.join(' ')
 }
