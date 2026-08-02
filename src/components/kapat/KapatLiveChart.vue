@@ -37,6 +37,7 @@ import { Mixins, Prop, Watch } from 'vue-property-decorator'
 import BaseMixin from '@/components/mixins/base'
 import ThemeMixin from '@/components/mixins/theme'
 import { KlippyBridge } from '@/lib/kapatBridge'
+import { getKapatChartBuffer, resetKapatChartBuffer, type KapatChartBuffer } from '@/lib/kapatChartBuffer'
 import uPlot from 'uplot'
 import 'uplot/dist/uPlot.min.css'
 import { mdiCog } from '@mdi/js'
@@ -56,16 +57,16 @@ export default class KapatLiveChart extends Mixins(BaseMixin, ThemeMixin) {
     subscribedSensor: string | null = null
     resizeObserver: ResizeObserver | null = null
     tickTimer: number | null = null
-
-    xs: number[] = []
-    ys: number[] = []
-    smoothedYs: number[] = []
-    t0: number | null = null
     dirty = false
 
-    // Cascaded-EMA running state -- see pushSample() for the algorithm.
-    private stageValues: number[] | null = null
-    private lastSampleRelT: number | null = null
+    // Backed by a module-level singleton (kapatChartBuffer.ts) instead
+    // of plain instance fields -- see that file's own comment for why.
+    // Set for real in onBridgeOrSensorChange() below (an `immediate`
+    // watcher, so this runs before mounted()/pushSample() ever fire) --
+    // not initialized here via a field initializer, since prop values
+    // aren't reliably available yet at that point in vue-class-
+    // component's construction order.
+    buf!: KapatChartBuffer
 
     // Persisted as a Mainsail UI setting (same gui/saveSetting mechanism
     // TemperaturePanelSettings.vue uses) rather than plain component
@@ -115,7 +116,12 @@ export default class KapatLiveChart extends Mixins(BaseMixin, ThemeMixin) {
     @Watch('bridge', { immediate: true })
     @Watch('sensorName')
     onBridgeOrSensorChange(): void {
-        if (!this.bridge || !this.sensorName || this.subscribedSensor === this.sensorName) return
+        if (!this.sensorName) return
+        if (this.subscribedSensor !== this.sensorName) {
+            this.buf = getKapatChartBuffer(this.sensorName)
+            this.dirty = true
+        }
+        if (!this.bridge || this.subscribedSensor === this.sensorName) return
         if (this.unsubscribe) this.unsubscribe()
         this.unsubscribe = this.bridge.subscribeLoadCellForce(this.sensorName, (t: number, force_g: number) =>
             this.pushSample(t, force_g)
@@ -151,17 +157,17 @@ export default class KapatLiveChart extends Mixins(BaseMixin, ThemeMixin) {
     // alpha.
     @Watch('avgWindowMs')
     onWindowChange(): void {
-        const n = this.xs.length
+        const n = this.buf.xs.length
         if (n === 0) return
-        this.stageValues = null
+        this.buf.stageValues = null
         // Use the buffer's own average sample interval for this one-time
         // replay's alpha -- currentAlpha(dt=0) means "no smoothing at
         // all" (see its own comment), which is only correct for the
         // very first live sample, not for reprocessing history.
-        const avgDt = n > 1 ? (this.xs[n - 1] - this.xs[0]) / (n - 1) : 0
+        const avgDt = n > 1 ? (this.buf.xs[n - 1] - this.buf.xs[0]) / (n - 1) : 0
         const alpha = this.currentAlpha(avgDt)
         for (let i = 0; i < n; i++) {
-            this.smoothedYs[i] = this.stepCascade(this.ys[i], alpha)
+            this.buf.smoothedYs[i] = this.stepCascade(this.buf.ys[i], alpha)
         }
         this.dirty = true
     }
@@ -196,18 +202,20 @@ export default class KapatLiveChart extends Mixins(BaseMixin, ThemeMixin) {
     }
 
     private stepCascade(x: number, alpha: number): number {
-        if (this.stageValues === null) this.stageValues = new Array(KapatLiveChart.STAGES).fill(x)
+        if (this.buf.stageValues === null) this.buf.stageValues = new Array(KapatLiveChart.STAGES).fill(x)
+        const stageValues = this.buf.stageValues
         let v = x
         for (let k = 0; k < KapatLiveChart.STAGES; k++) {
-            this.stageValues[k] += alpha * (v - this.stageValues[k])
-            v = this.stageValues[k]
+            stageValues[k] += alpha * (v - stageValues[k])
+            v = stageValues[k]
         }
         return v
     }
 
     pushSample(t: number, force_g: number): void {
-        if (this.t0 === null) this.t0 = t
-        const rel = t - this.t0
+        const buf = this.buf
+        if (buf.t0 === null) buf.t0 = t
+        const rel = t - buf.t0
 
         // O(1) per sample (well, O(STAGES)) regardless of buffer size or
         // window length -- replaces a previous from-scratch boxcar-
@@ -219,28 +227,28 @@ export default class KapatLiveChart extends Mixins(BaseMixin, ThemeMixin) {
         // rate: both that recompute and the per-sample buffer trim
         // below scaled directly with buffer size and ran up to
         // 20x/second.
-        const dt = this.lastSampleRelT === null ? 0 : rel - this.lastSampleRelT
-        this.lastSampleRelT = rel
+        const dt = buf.lastSampleRelT === null ? 0 : rel - buf.lastSampleRelT
+        buf.lastSampleRelT = rel
         const smoothed = this.stepCascade(force_g, this.currentAlpha(dt))
 
-        this.xs.push(rel)
-        this.ys.push(force_g)
-        this.smoothedYs.push(smoothed)
+        buf.xs.push(rel)
+        buf.ys.push(force_g)
+        buf.smoothedYs.push(smoothed)
 
         const floor = rel - this.bufferSeconds
         let cut = 0
-        while (cut < this.xs.length && this.xs[cut] < floor) cut++
+        while (cut < buf.xs.length && buf.xs[cut] < floor) cut++
         if (cut >= KapatLiveChart.TRIM_BATCH) {
-            this.xs = this.xs.slice(cut)
-            this.ys = this.ys.slice(cut)
-            this.smoothedYs = this.smoothedYs.slice(cut)
+            buf.xs = buf.xs.slice(cut)
+            buf.ys = buf.ys.slice(cut)
+            buf.smoothedYs = buf.smoothedYs.slice(cut)
         }
         this.dirty = true
     }
 
     tick(): void {
         if (this.dirty && this.plot) {
-            this.plot.setData([this.xs, this.ys, this.smoothedYs], true)
+            this.plot.setData([this.buf.xs, this.buf.ys, this.buf.smoothedYs], true)
             this.dirty = false
         }
     }
@@ -265,7 +273,7 @@ export default class KapatLiveChart extends Mixins(BaseMixin, ThemeMixin) {
                     { label: 'smoothed', stroke: c.smoothed, width: 2, points: { show: false }, show: this.smoothEnabled },
                 ],
             },
-            [[], [], []],
+            [this.buf.xs, this.buf.ys, this.buf.smoothedYs],
             container
         )
 
@@ -290,13 +298,12 @@ export default class KapatLiveChart extends Mixins(BaseMixin, ThemeMixin) {
         if (this.plot) this.plot.destroy()
     }
 
+    // Called explicitly when a fresh sweep starts (see pages/Kapat.vue's
+    // handleStart) -- unlike navigating away and back, that's a genuine
+    // "start over" moment, so this really does wipe the singleton
+    // buffer rather than just re-fetching it.
     reset(): void {
-        this.xs = []
-        this.ys = []
-        this.smoothedYs = []
-        this.t0 = null
-        this.stageValues = null
-        this.lastSampleRelT = null
+        this.buf = resetKapatChartBuffer(this.sensorName)
         this.dirty = true
     }
 }
