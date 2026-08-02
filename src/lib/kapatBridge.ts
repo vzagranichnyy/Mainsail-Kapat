@@ -32,6 +32,11 @@ export class KlippyBridge {
     private _id = 1
     private _pending = new Map<number, PendingEntry>()
     private _keyListeners = new Map<string, Set<(params: unknown) => void>>()
+    // Remembers which subscribeStream() calls are currently active (method +
+    // params, keyed by response key) so a reconnect can replay them -- see
+    // the onopen handler below for why this is needed at all.
+    private _subscriptions = new Map<string, { method: string; extraParams: Record<string, unknown> }>()
+    private _everConnected = false
     private _connected = false
 
     constructor({ hostname = window.location.hostname, port = 7125 }: { hostname?: string; port?: number } = {}) {
@@ -44,6 +49,28 @@ export class KlippyBridge {
         this.ws = new WebSocket(`${proto}://${this.hostname}:${this.port}/klippysocket`)
         this.ws.onopen = () => {
             this._connected = true
+            // Moonraker's push subscriptions (load_cell/dump_force etc.)
+            // are tied to the specific socket that requested them, not to
+            // this KlippyBridge instance -- a fresh socket after a drop
+            // (flaky wifi, router hiccup, ...) means Klipper has no idea
+            // it should still be pushing us samples, even though
+            // `connected` reads true again and nothing in KapatLiveChart
+            // ever re-subscribes on its own. Symptom: the load chart goes
+            // permanently blank after any reconnect, until a full page
+            // reload rebuilds everything from scratch. Skip this on the
+            // very first connect -- each subscribeStream() call already
+            // queues its own initial request behind this same 'open'
+            // event via call() below, so replaying here too would just
+            // double-fire it.
+            if (this._everConnected) {
+                window.console.debug('[kapat] bridge reconnected, replaying', this._subscriptions.size, 'subscription(s)')
+                for (const [key, sub] of this._subscriptions) {
+                    this.call(sub.method, { ...sub.extraParams, response_template: { key } }).catch((err) =>
+                        window.console.error(`kapat bridge: re-subscribe ${sub.method} failed`, err)
+                    )
+                }
+            }
+            this._everConnected = true
         }
         this.ws.onclose = () => {
             this._connected = false
@@ -101,10 +128,14 @@ export class KlippyBridge {
     ): () => void {
         if (!this._keyListeners.has(key)) this._keyListeners.set(key, new Set())
         this._keyListeners.get(key)?.add(onData)
+        this._subscriptions.set(key, { method, extraParams })
         this.call(method, { ...extraParams, response_template: { key } }).catch((err) =>
             window.console.error(`kapat bridge: subscribe ${method} failed`, err)
         )
-        return () => this._keyListeners.get(key)?.delete(onData)
+        return () => {
+            this._keyListeners.get(key)?.delete(onData)
+            if (!this._keyListeners.get(key)?.size) this._subscriptions.delete(key)
+        }
     }
 
     /** Convenience wrapper for the specific stream KAPAT's live chart needs. */
