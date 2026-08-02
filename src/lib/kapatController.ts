@@ -186,6 +186,31 @@ async function logHistory(): Promise<void> {
         color: kapatSweepState.color || undefined,
     }
     const list = await loadList<KapatHistoryEntry>(kapatController.bridge, 'history')
+    // Multiple browser tabs/windows open against the same printer (the
+    // Dashboard panels in one tab, the dedicated KAPAT tab in another,
+    // say) each run their own independent copy of this whole module,
+    // each with their own poll -- all of them observe the exact same
+    // real sweep completion and each try to log it. Confirmed live: 3
+    // tabs open produced 3 history entries with byte-identical k_opt
+    // (0.03843268611250361, full precision) at :26, :29, and :60
+    // seconds apart -- not a tight race, so the dedupe window needs
+    // real headroom, not just a couple of seconds. There's no
+    // cross-tab coordination possible (each tab's kapatSweepState/
+    // wasSweeping is separate in-memory state), so dedupe against the
+    // data itself instead: if the most recent saved entry already has
+    // this *exact* k_opt (17 significant digits -- two genuinely
+    // different sweeps matching by coincidence is not a real
+    // possibility) and was written within the last 5 minutes, some
+    // other tab/poller already logged this same completion -- skip.
+    const DEDUPE_WINDOW_MS = 5 * 60 * 1000
+    const mostRecent = list[0]
+    if (
+        mostRecent &&
+        mostRecent.kOpt === entry.kOpt &&
+        Date.now() - new Date(mostRecent.time).getTime() < DEDUPE_WINDOW_MS
+    ) {
+        return
+    }
     list.unshift(entry)
     await saveList(kapatController.bridge, 'history', list.slice(0, 200))
 }
