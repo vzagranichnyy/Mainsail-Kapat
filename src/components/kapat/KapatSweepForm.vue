@@ -125,7 +125,7 @@
                         {{ $t('Kapat.SweepForm.Cancel') }}
                     </v-btn>
                     <v-btn v-else block color="primary" :disabled="disabled" @click="start">
-                        {{ disabled ? $t('Kapat.SweepForm.Running') : $t('Kapat.SweepForm.Start') }}
+                        {{ printerBusy ? $t('Kapat.SweepForm.PrinterBusy') : disabled ? $t('Kapat.SweepForm.Running') : $t('Kapat.SweepForm.Start') }}
                     </v-btn>
                 </v-col>
             </v-row>
@@ -160,6 +160,7 @@ export default class KapatSweepForm extends Mixins(BaseMixin) {
     @Prop({ type: Boolean, default: false }) declare readonly disabled: boolean
     @Prop({ type: Boolean, default: false }) declare readonly sweeping: boolean
     @Prop({ type: Boolean, default: false }) declare readonly collapsible: boolean
+    @Prop({ type: Boolean, default: false }) declare readonly printerBusy: boolean
 
     onSubmit({ name, value }: { name: string; value: number }): void {
         this.$emit('update:params', { ...this.params, [name]: value })

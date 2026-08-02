@@ -165,6 +165,16 @@ export function kapatHasData(): boolean {
     return storeRef?.state.printer?.kapat !== undefined
 }
 
+// Mirrors BaseMixin's printerIsPrinting (printing OR paused -- a
+// paused print can resume at any moment, and a sweep mid-print would
+// move the toolhead and wreck it either way). Re-derived here instead
+// of reused directly since this module has no Vue component instance
+// of its own to read `this.printerIsPrinting` from.
+export function isPrinterPrinting(): boolean {
+    const state = storeRef?.state.printer?.print_stats?.state ?? storeRef?.state.printer?.idle_timeout?.state ?? ''
+    return ['printing', 'paused'].includes(state as string)
+}
+
 export function setStatus(text: string, isError = false): void {
     kapatController.actionStatus = text
     kapatController.actionError = isError
@@ -355,6 +365,10 @@ export async function handleStart(params: KapatSweepParams, resetChart?: () => v
     const status = getKapatStatus()
     if (!status.has_load_cell) {
         setStatus(i18n.t('Kapat.Status.NoLoadCell') as string, true)
+        return
+    }
+    if (isPrinterPrinting()) {
+        setStatus(i18n.t('Kapat.Status.PrinterBusy') as string, true)
         return
     }
     if (kapatController.preflightBusy || isKapatSweeping()) return

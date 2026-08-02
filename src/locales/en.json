@@ -486,6 +486,7 @@
             "SweepStarting": "starting sweep...",
             "SweepFailed": "sweep failed: {err}",
             "NoLoadCell": "no load cell detected on this printer",
+            "PrinterBusy": "can't start calibration while printing",
             "Applied": "applied K={k}",
             "ApplyFailed": "apply failed: {err}"
         },
@@ -517,6 +518,7 @@
             "KStep": "K step",
             "Start": "Start calibration",
             "Running": "Calibrating...",
+            "PrinterBusy": "Printer is busy",
             "Cancel": "Cancel"
         },
         "ProfilePicker": {

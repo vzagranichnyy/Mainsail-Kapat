@@ -15,7 +15,8 @@
             <v-col cols="12" md="8">
                 <kapat-sweep-form
                     :bridge="controller.bridge"
-                    :disabled="sweeping || controller.preflightBusy"
+                    :disabled="sweeping || controller.preflightBusy || printerIsPrinting"
+                    :printer-busy="printerIsPrinting"
                     :sweeping="sweeping"
                     :params.sync="controller.sweepParams"
                     @start="handleStart" />
