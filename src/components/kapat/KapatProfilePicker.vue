@@ -374,7 +374,23 @@ export default class KapatProfilePicker extends Mixins(BaseMixin) {
     // fields already surviving recreation for history-logging.
     async load(): Promise<void> {
         this.loading = true
-        this.profiles = await loadList<KapatProfile>(this.bridge, this.KEY)
+        let loaded: KapatProfile[]
+        try {
+            loaded = await loadList<KapatProfile>(this.bridge, this.KEY)
+        } catch (err) {
+            // A failed load (bridge disconnected/reconnecting) must NOT
+            // reset this.profiles to empty -- persist()/doOverwrite()/
+            // doSaveAsNew() all write back whatever's currently in
+            // this.profiles, and doing that with a wiped array would
+            // discard every other saved profile on the very next save.
+            // Keep whatever was last successfully loaded and surface the
+            // failure instead.
+            this.loading = false
+            this.statusMsg = this.$t('Kapat.ProfilePicker.MsgLoadFailed', { err: (err as Error).message }) as string
+            this.statusIsError = true
+            return
+        }
+        this.profiles = loaded
         this.loading = false
         if (this.selectedId) return
         // kapatSweepState.profileId (a sweep is actually in flight) takes

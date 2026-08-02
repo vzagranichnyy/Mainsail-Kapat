@@ -131,6 +131,9 @@ export default class PageKapat extends Mixins(BaseMixin) {
         return isKapatSweeping()
     }
 
+    // printerIsPrinting itself comes from BaseMixin (used app-wide in
+    // Mainsail already) -- no need to re-derive it here.
+
     get statusLine(): string {
         if (kapatController.actionStatus !== null) return kapatController.actionStatus
         if (!this.kapatHasData) return this.$t('Kapat.Status.Connecting') as string

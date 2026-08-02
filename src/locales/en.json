@@ -542,6 +542,7 @@
             "Delete": "Delete",
             "ApplyToPrinter": "Apply",
             "MsgNeedLabel": "Give this profile a label first.",
+            "MsgLoadFailed": "Failed to load profiles ({err}) -- keeping the list as-is, nothing will be saved over it.",
             "MsgSaved": "Saved.",
             "MsgRenamed": "Renamed.",
             "MsgDeleted": "Deleted.",

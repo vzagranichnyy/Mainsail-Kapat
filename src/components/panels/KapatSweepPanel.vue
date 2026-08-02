@@ -51,6 +51,9 @@ export default class KapatSweepPanel extends Mixins(BaseMixin) {
         return isKapatSweeping()
     }
 
+    // printerIsPrinting comes from BaseMixin (used app-wide in Mainsail
+    // already) -- no need to re-derive it here.
+
     created(): void {
         ensureKapatController(this.$store)
     }

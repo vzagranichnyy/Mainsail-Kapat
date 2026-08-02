@@ -142,7 +142,20 @@ export default class KapatHistoryPanel extends Mixins(BaseMixin) {
 
     async load(): Promise<void> {
         this.loading = true
-        this.entries = await loadList<KapatHistoryEntry>(this.bridge, this.KEY)
+        let loaded: KapatHistoryEntry[]
+        try {
+            loaded = await loadList<KapatHistoryEntry>(this.bridge, this.KEY)
+        } catch (err) {
+            // Keep whatever was last successfully loaded rather than
+            // wiping this.entries -- this runs on every window focus,
+            // and a save triggered right after a failed refetch
+            // (clearAll/removeEntry both write back this.entries as-is)
+            // must not replace the real file with an empty/partial copy.
+            this.loading = false
+            this.$toast.error((err as Error).message)
+            return
+        }
+        this.entries = loaded
         this.loading = false
     }
 
