@@ -1,6 +1,10 @@
 <template>
     <panel :title="$t('Kapat.SweepForm.Title')" card-class="kapat-sweep-form" :margin-bottom="false" :collapsible="collapsible">
         <template #buttons>
+            <v-btn-toggle :value="params.mode || 'grid'" color="primary" mandatory dense class="mr-2" @change="onModeChange">
+                <v-btn small value="grid">{{ $t('Kapat.SweepForm.ModeGrid') }}</v-btn>
+                <v-btn small value="bisect">{{ $t('Kapat.SweepForm.ModeBisect') }}</v-btn>
+            </v-btn-toggle>
             <v-btn text small @click="resetDefaults">{{ $t('Kapat.SweepForm.Reset') }}</v-btn>
         </template>
         <v-card-text>
@@ -32,7 +36,7 @@
                     </div>
                     <div class="kapat-field">
                         <number-input
-                            :label="$t('Kapat.SweepForm.KStep')"
+                            :label="params.mode === 'bisect' ? $t('Kapat.SweepForm.KStepBisect') : $t('Kapat.SweepForm.KStep')"
                             param="kstep"
                             :target="params.kstep"
                             :min="0.001"
@@ -164,6 +168,10 @@ export default class KapatSweepForm extends Mixins(BaseMixin) {
 
     onSubmit({ name, value }: { name: string; value: number }): void {
         this.$emit('update:params', { ...this.params, [name]: value })
+    }
+
+    onModeChange(mode: 'grid' | 'bisect'): void {
+        this.$emit('update:params', { ...this.params, mode })
     }
 
     start(): void {

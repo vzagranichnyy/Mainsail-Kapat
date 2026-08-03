@@ -51,7 +51,7 @@
                     <v-card-text>
                         <kapat-analysis-panel :bridge="controller.bridge" />
 
-                        <template v-if="bdPerK.length">
+                        <template v-if="bdPerK.length && hasBdComposite">
                             <v-divider class="my-4" />
                             <kapat-bd-composite :bd-per-k="bdPerK" :default-weights="bdWeights" :notes="kapatStatus.last && kapatStatus.last.notes ? kapatStatus.last.notes : []" />
 
@@ -117,6 +117,20 @@ export default class PageKapat extends Mixins(BaseMixin) {
 
     get bdPerK(): BdKResult[] {
         return this.kapatStatus.last?.bd_per_k ?? []
+    }
+
+    // A true bisection sweep only ever visits a handful of sparse,
+    // non-uniformly-spaced K's -- not enough (and not evenly enough
+    // spread) for a composite/per-metric trend-across-K to mean
+    // anything. The backend already signals this by leaving
+    // bd_composite_k_opt null in that case (see __init__.py's
+    // cmd_KAPAT_SWEEP, bisect_true branch) -- BdComposite/
+    // BdMetricKOptTable/BdMetricGrid all recompute their own numbers
+    // client-side from bdPerK regardless of this flag, so it's used
+    // purely to decide whether to render them at all, not to feed them
+    // a value.
+    get hasBdComposite(): boolean {
+        return this.kapatStatus.last?.bd_composite_k_opt != null
     }
 
     get bdWeights(): Record<string, number> {

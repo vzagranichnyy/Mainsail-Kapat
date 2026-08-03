@@ -26,6 +26,10 @@ export interface KapatSweepParams {
     // handleStart() for why this moved out of the web UI's own
     // orchestration.
     targetTemp?: number
+    // 'grid' (default, omitted from the command -- byte-identical to the
+    // pre-bisection command line) or 'bisect' (adds MODE=BISECT, KSTEP
+    // becomes a stop-tolerance rather than a grid step server-side).
+    mode?: 'grid' | 'bisect'
 }
 
 const PARAM_MAP: Record<string, string> = {
@@ -60,6 +64,9 @@ export function buildSweepCommand(params: KapatSweepParams): string {
     }
     if (params.targetTemp != null) {
         parts.push(`TARGET_TEMP=${params.targetTemp}`)
+    }
+    if (params.mode === 'bisect') {
+        parts.push('MODE=BISECT')
     }
     return parts.join(' ')
 }

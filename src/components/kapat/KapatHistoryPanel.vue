@@ -43,6 +43,10 @@
                 <span class="font-weight-bold warning--text">{{ fmt(item.kOpt) }}</span>
             </template>
 
+            <template #item.source="{ item }">
+                <span :title="item.source || ''">{{ methodLabel(item.source) }}</span>
+            </template>
+
             <template #item.applied="{ item }">
                 <v-icon v-if="item.applied" small color="success">{{ mdiCheck }}</v-icon>
                 <span v-else class="text--disabled">—</span>
@@ -129,14 +133,15 @@ export default class KapatHistoryPanel extends Mixins(BaseMixin) {
 
     get headers(): HistoryTableHeader[] {
         return [
-            { text: this.$t('Kapat.ProfilePicker.FilamentType') as string, value: 'filamentType', width: '14%' },
-            { text: this.$t('Kapat.ProfilePicker.Brand') as string, value: 'brand', width: '16%' },
+            { text: this.$t('Kapat.ProfilePicker.FilamentType') as string, value: 'filamentType', width: '12%' },
+            { text: this.$t('Kapat.ProfilePicker.Brand') as string, value: 'brand', width: '14%' },
             { text: this.$t('Kapat.ProfilePicker.Color') as string, value: 'color', sortable: false, align: 'center', width: '8%' },
-            { text: this.$t('Kapat.ProfilePicker.TestTemp') as string, value: 'temp', width: '12%' },
-            { text: this.$t('Kapat.HistoryPanel.When') as string, value: 'time', width: '16%' },
-            { text: 'PA', value: 'kOpt', width: '10%' },
-            { text: this.$t('Kapat.HistoryPanel.Applied') as string, value: 'applied', align: 'center', width: '10%' },
-            { text: '', value: 'actions', sortable: false, align: 'end', width: '14%' },
+            { text: this.$t('Kapat.ProfilePicker.TestTemp') as string, value: 'temp', width: '10%' },
+            { text: this.$t('Kapat.HistoryPanel.When') as string, value: 'time', width: '14%' },
+            { text: 'PA', value: 'kOpt', width: '9%' },
+            { text: this.$t('Kapat.HistoryPanel.Method') as string, value: 'source', width: '12%' },
+            { text: this.$t('Kapat.HistoryPanel.Applied') as string, value: 'applied', align: 'center', width: '9%' },
+            { text: '', value: 'actions', sortable: false, align: 'end', width: '12%' },
         ]
     }
 
@@ -195,6 +200,21 @@ export default class KapatHistoryPanel extends Mixins(BaseMixin) {
 
     fmt(v: number | null | undefined, digits = 4): string {
         return v === null || v === undefined || Number.isNaN(v) ? '—' : Number(v).toFixed(digits)
+    }
+
+    // `source` is the backend's raw k_opt_source string (see __init__.py's
+    // _report_sweep) -- these are literal identifiers from the analysis
+    // code, same "left as-is rather than translated" convention already
+    // used project-wide for bd_pressure's metric/region names. Just
+    // shortened to fit the column; the full string is still available
+    // via the span's title attribute on hover.
+    methodLabel(source?: string): string {
+        if (!source) return '—'
+        if (source === 'bd_pressure composite') return 'Composite'
+        if (source === 'integral-area (bisection)') return 'Bisection'
+        if (source === 'integral-area') return 'Integral-area'
+        if (source === 'phase-lag') return 'Phase-lag'
+        return source
     }
 }
 </script>

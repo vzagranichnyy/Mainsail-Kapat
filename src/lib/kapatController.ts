@@ -62,6 +62,7 @@ const DEFAULT_SWEEP_PARAMS: KapatSweepParams = {
     kend: 0.08,
     kstep: 0.005,
     wobble: 0.05,
+    mode: 'grid',
 }
 
 export interface KapatControllerState {
