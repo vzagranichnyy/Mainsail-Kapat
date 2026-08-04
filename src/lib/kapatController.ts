@@ -77,6 +77,11 @@ export interface KapatControllerState {
     calibX: number
     calibY: number
     calibZ: number
+    // Global (not per-profile) custom g-code, run once after a
+    // successful calibration completes -- see onSweepingChange().
+    // Persisted alongside calibX/Y/Z in settings.json since it's edited
+    // from the same calibration-position row in KapatProfilePicker.vue.
+    postGcode: string
     preflightBusy: boolean
     // Transient override for a status line, used only while an
     // imperative action (preflight homing/heating, apply) is in flight
@@ -124,6 +129,7 @@ export const kapatController: KapatControllerState = Vue.observable({
     calibX: 0,
     calibY: 0,
     calibZ: 10,
+    postGcode: '',
     preflightBusy: false,
     actionStatus: null,
     actionError: false,
@@ -244,6 +250,21 @@ function onSweepingChange(sweeping: boolean): void {
                 () => window.console.debug('[kapat] history entry saved'),
                 (err) => window.console.error('[kapat] failed to save history entry', err)
             )
+            // Global custom g-code, run once a calibration genuinely
+            // finished (same success gate as logHistory() above -- not
+            // cancelled, a real k_opt exists). kapatController.postGcode
+            // is module-level state (not a component's own data()), so
+            // it survives page navigation/recreation the same way the
+            // rest of kapatController does -- no separate snapshot into
+            // kapatSweepState needed the way profile fields have.
+            if (kapatController.postGcode.trim()) {
+                Vue.$socket
+                    .emitAndWait('printer.gcode.script', { script: kapatController.postGcode })
+                    .then(
+                        () => window.console.debug('[kapat] post-calibration g-code sent'),
+                        (err) => window.console.error('[kapat] post-calibration g-code failed', err)
+                    )
+            }
         } else {
             window.console.debug('[kapat] sweep end: not logging (cancelled, or no k_opt yet)')
         }
@@ -306,10 +327,11 @@ export function ensureKapatController(store: Store<RootState>): void {
     kapatController.bridge
         .getData('settings')
         .then((res) => {
-            const s = (res?.value as Record<string, number>) || {}
+            const s = (res?.value as { calibX?: number; calibY?: number; calibZ?: number; postGcode?: string }) || {}
             if (s.calibX !== undefined) kapatController.calibX = s.calibX
             if (s.calibY !== undefined) kapatController.calibY = s.calibY
             if (s.calibZ !== undefined) kapatController.calibZ = s.calibZ
+            if (typeof s.postGcode === 'string') kapatController.postGcode = s.postGcode
         })
         .catch(() => {})
     // 250ms, not 1s -- confirmed live that an artificially short test

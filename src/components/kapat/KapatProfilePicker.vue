@@ -120,7 +120,7 @@
             </p>
 
             <v-row dense class="kapat-align-row-5">
-                <v-col cols="3">
+                <v-col cols="2">
                     <number-input
                         :label="$t('Kapat.CalibPosition.X')"
                         param="calibX"
@@ -133,7 +133,7 @@
                         commit-on-blur
                         @submit="({ value }) => $emit('update:calibX', value)" />
                 </v-col>
-                <v-col cols="3">
+                <v-col cols="2">
                     <number-input
                         :label="$t('Kapat.CalibPosition.Y')"
                         param="calibY"
@@ -146,7 +146,7 @@
                         commit-on-blur
                         @submit="({ value }) => $emit('update:calibY', value)" />
                 </v-col>
-                <v-col cols="3">
+                <v-col cols="2">
                     <number-input
                         :label="$t('Kapat.CalibPosition.Z')"
                         param="calibZ"
@@ -164,10 +164,43 @@
                         {{ $t('Kapat.CalibPosition.Save') }}
                     </v-btn>
                 </v-col>
+                <v-col cols="3" class="d-flex align-end">
+                    <v-btn
+                        block
+                        outlined
+                        color="primary"
+                        class="kapat-calib-save-btn"
+                        :title="$t('Kapat.CalibPosition.PostGcodeHint').toString()"
+                        @click="openGcodeDialog">
+                        <v-icon small class="mr-1">{{ mdiCodeTags }}</v-icon>
+                        {{ $t('Kapat.CalibPosition.PostGcode') }}
+                    </v-btn>
+                </v-col>
             </v-row>
             <p v-if="calibStatusMsg" class="mt-2 mb-0" :class="calibStatusIsError ? 'error--text' : 'success--text'">
                 {{ calibStatusMsg }}
             </p>
+
+            <v-dialog v-model="gcodeDialogOpen" max-width="480">
+                <v-card>
+                    <v-card-title>{{ $t('Kapat.CalibPosition.PostGcodeDialogTitle') }}</v-card-title>
+                    <v-card-text>
+                        <p class="text--disabled mb-2">{{ $t('Kapat.CalibPosition.PostGcodeHint') }}</p>
+                        <v-textarea
+                            v-model="gcodeDraft"
+                            outlined
+                            dense
+                            hide-details="auto"
+                            rows="6"
+                            :placeholder="$t('Kapat.CalibPosition.PostGcodePlaceholder').toString()" />
+                    </v-card-text>
+                    <v-card-actions>
+                        <v-spacer />
+                        <v-btn text @click="gcodeDialogOpen = false">{{ $t('Buttons.Cancel') }}</v-btn>
+                        <v-btn color="primary" @click="saveGcodeDialog">{{ $t('Kapat.CalibPosition.Save') }}</v-btn>
+                    </v-card-actions>
+                </v-card>
+            </v-dialog>
         </v-card-text>
     </panel>
 </template>
@@ -180,6 +213,7 @@ import { KlippyBridge } from '@/lib/kapatBridge'
 import { loadList, saveList } from '@/lib/kapatData'
 import { KapatSweepParams } from '@/lib/kapatGcode'
 import { kapatSweepState, persistSweepState } from '@/lib/kapatSweepState'
+import { mdiCodeTags } from '@mdi/js'
 
 interface KapatProfile {
     id: string
@@ -245,6 +279,7 @@ const COLOR_PALETTE = [
 @Component
 export default class KapatProfilePicker extends Mixins(BaseMixin) {
     COLOR_PALETTE = COLOR_PALETTE
+    mdiCodeTags = mdiCodeTags
 
     @Prop({ required: true }) declare readonly bridge: KlippyBridge
     @Prop({ required: true }) declare readonly sweepParams: KapatSweepParams
@@ -253,6 +288,7 @@ export default class KapatProfilePicker extends Mixins(BaseMixin) {
     @Prop({ required: true }) declare readonly calibX: number
     @Prop({ required: true }) declare readonly calibY: number
     @Prop({ required: true }) declare readonly calibZ: number
+    @Prop({ default: '' }) declare readonly postGcode: string
     @Prop({ default: false }) declare readonly sweeping: boolean
     @Prop({ default: null }) declare readonly lastKOpt: number | null
     @Prop({ type: Boolean, default: false }) declare readonly collapsible: boolean
@@ -273,6 +309,11 @@ export default class KapatProfilePicker extends Mixins(BaseMixin) {
     confirming = false
     calibStatusMsg = ''
     calibStatusIsError = false
+    // Post-calibration g-code dialog -- draft is a separate local copy
+    // of the postGcode prop, not edited in place, so opening the dialog
+    // and cancelling out doesn't touch the parent's value.
+    gcodeDialogOpen = false
+    gcodeDraft = ''
     // Seeded from the `sweeping` prop in created() (mirrors Kapat.vue's
     // own wasSweeping pattern) -- needed to detect the true->false
     // completion edge even if this component gets recreated (Vue Router
@@ -492,6 +533,7 @@ export default class KapatProfilePicker extends Mixins(BaseMixin) {
                 calibX: Number(this.calibX),
                 calibY: Number(this.calibY),
                 calibZ: Number(this.calibZ),
+                postGcode: this.postGcode,
             })
             this.calibStatusMsg = this.$t('Kapat.CalibPosition.Saved') as string
             this.calibStatusIsError = false
@@ -499,6 +541,29 @@ export default class KapatProfilePicker extends Mixins(BaseMixin) {
             this.calibStatusMsg = this.$t('Kapat.CalibPosition.SaveFailed', { err: (err as Error).message }) as string
             this.calibStatusIsError = true
         }
+    }
+
+    openGcodeDialog(): void {
+        this.gcodeDraft = this.postGcode
+        this.gcodeDialogOpen = true
+    }
+
+    async saveGcodeDialog(): Promise<void> {
+        this.$emit('update:postGcode', this.gcodeDraft)
+        try {
+            await this.bridge.setData('settings', {
+                calibX: Number(this.calibX),
+                calibY: Number(this.calibY),
+                calibZ: Number(this.calibZ),
+                postGcode: this.gcodeDraft,
+            })
+            this.calibStatusMsg = this.$t('Kapat.CalibPosition.Saved') as string
+            this.calibStatusIsError = false
+        } catch (err) {
+            this.calibStatusMsg = this.$t('Kapat.CalibPosition.SaveFailed', { err: (err as Error).message }) as string
+            this.calibStatusIsError = true
+        }
+        this.gcodeDialogOpen = false
     }
 
     validate(): boolean {

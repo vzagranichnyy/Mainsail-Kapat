@@ -578,7 +578,11 @@
             "Z": "Z",
             "Save": "Сохранить",
             "Saved": "Сохранено.",
-            "SaveFailed": "Ошибка сохранения: {err}"
+            "SaveFailed": "Ошибка сохранения: {err}",
+            "PostGcode": "G-code",
+            "PostGcodeHint": "Кастомный g-code, который выполнится один раз сразу после успешного завершения калибровки (общий для всех профилей).",
+            "PostGcodeDialogTitle": "G-code после калибровки",
+            "PostGcodePlaceholder": "G91\nG1 Z50 F600\nG1 X50 F3000\nG1 Z-70 F600\nG1 X-70 F3000\nG90"
         },
         "AnalysisSection": {
             "Title": "Анализ"

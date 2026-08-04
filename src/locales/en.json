@@ -578,7 +578,11 @@
             "Z": "Z",
             "Save": "Save",
             "Saved": "Saved.",
-            "SaveFailed": "Save failed: {err}"
+            "SaveFailed": "Save failed: {err}",
+            "PostGcode": "G-code",
+            "PostGcodeHint": "Custom g-code, run once right after a calibration finishes successfully (shared across all profiles).",
+            "PostGcodeDialogTitle": "Post-calibration g-code",
+            "PostGcodePlaceholder": "G91\nG1 Z50 F600\nG1 X50 F3000\nG1 Z-70 F600\nG1 X-70 F3000\nG90"
         },
         "AnalysisSection": {
             "Title": "Analysis"

@@ -11,6 +11,7 @@
         :calib-x.sync="controller.calibX"
         :calib-y.sync="controller.calibY"
         :calib-z.sync="controller.calibZ"
+        :post-gcode.sync="controller.postGcode"
         :sweeping="sweeping"
         :last-k-opt="kapatStatus.last && kapatStatus.last.k_opt != null ? kapatStatus.last.k_opt : null"
         :collapsible="true"
