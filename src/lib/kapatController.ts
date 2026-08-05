@@ -187,7 +187,11 @@ export function setStatus(text: string, isError = false): void {
     kapatController.actionError = isError
 }
 
-async function logHistory(): Promise<void> {
+// Returns whether this call actually wrote a NEW entry (true) or was
+// skipped as a cross-tab duplicate (false, see the dedupe comment
+// below) -- onSweepingChange() uses this to decide whether it's also
+// the one tab that should fire postGcode, not just whether to log.
+async function logHistory(): Promise<boolean> {
     const status = getKapatStatus()
     const entry: KapatHistoryEntry = {
         id: `${Date.now()}`,
@@ -226,10 +230,11 @@ async function logHistory(): Promise<void> {
         mostRecent.kOpt === entry.kOpt &&
         Date.now() - new Date(mostRecent.time).getTime() < DEDUPE_WINDOW_MS
     ) {
-        return
+        return false
     }
     list.unshift(entry)
     await saveList(kapatController.bridge, 'history', list.slice(0, 200))
+    return true
 }
 
 function onSweepingChange(sweeping: boolean): void {
@@ -247,24 +252,33 @@ function onSweepingChange(sweeping: boolean): void {
         // result as if a new sweep had just completed.
         if (!kapatSweepState.cancelled && getKapatStatus().last?.k_opt != null) {
             logHistory().then(
-                () => window.console.debug('[kapat] history entry saved'),
+                (wrote) => {
+                    window.console.debug(`[kapat] history entry ${wrote ? 'saved' : 'deduped (another tab already logged it)'}`)
+                    // Global custom g-code, run once a calibration
+                    // genuinely finished -- gated on `wrote`, not just
+                    // the cancelled/k_opt check above, because THAT
+                    // check alone doesn't protect against multiple open
+                    // tabs each independently detecting the same sweep
+                    // completion (confirmed live: with 171's post-
+                    // calibration g-code set, it fired twice for one
+                    // real sweep). logHistory()'s own dedupe (checking
+                    // the saved data itself, not in-memory state that
+                    // can't be shared across tabs) is the one signal
+                    // that reliably identifies "am I the single tab
+                    // that should be doing this sweep's one-time
+                    // completion actions" -- reusing it here instead of
+                    // inventing a second, separate dedupe mechanism.
+                    if (wrote && kapatController.postGcode.trim()) {
+                        Vue.$socket
+                            .emitAndWait('printer.gcode.script', { script: kapatController.postGcode })
+                            .then(
+                                () => window.console.debug('[kapat] post-calibration g-code sent'),
+                                (err) => window.console.error('[kapat] post-calibration g-code failed', err)
+                            )
+                    }
+                },
                 (err) => window.console.error('[kapat] failed to save history entry', err)
             )
-            // Global custom g-code, run once a calibration genuinely
-            // finished (same success gate as logHistory() above -- not
-            // cancelled, a real k_opt exists). kapatController.postGcode
-            // is module-level state (not a component's own data()), so
-            // it survives page navigation/recreation the same way the
-            // rest of kapatController does -- no separate snapshot into
-            // kapatSweepState needed the way profile fields have.
-            if (kapatController.postGcode.trim()) {
-                Vue.$socket
-                    .emitAndWait('printer.gcode.script', { script: kapatController.postGcode })
-                    .then(
-                        () => window.console.debug('[kapat] post-calibration g-code sent'),
-                        (err) => window.console.error('[kapat] post-calibration g-code failed', err)
-                    )
-            }
         } else {
             window.console.debug('[kapat] sweep end: not logging (cancelled, or no k_opt yet)')
         }
