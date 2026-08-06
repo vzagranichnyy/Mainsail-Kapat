@@ -62,7 +62,18 @@ const DEFAULT_SWEEP_PARAMS: KapatSweepParams = {
     kend: 0.08,
     kstep: 0.005,
     wobble: 0.05,
-    mode: 'grid',
+    // Secant/regula-falsi bisection by default and ONLY -- per explicit
+    // user decision, promoted from an opt-in toggle item to the sole
+    // mode (plain-midpoint 'bisect' and 'grid' are both hidden from the
+    // UI now, same treatment GRID/Composite already got earlier).
+    // Nothing in this UI can set `mode` to anything else -- see
+    // KapatSweepForm.vue (no toggle left at all) and
+    // handleLoadParams() below, which strips `mode` from a loaded
+    // profile's saved params unless it's already 'bisect_secant'.
+    // Backend: klipper_extras/kapat/__init__.py's _next_bisect_probe();
+    // GRID and plain BISECT stay fully supported there via console/
+    // macro/API, this is UI-only.
+    mode: 'bisect_secant',
 }
 
 export interface KapatControllerState {
@@ -374,7 +385,13 @@ export function ensureKapatController(store: Store<RootState>): void {
 }
 
 export function handleLoadParams(params: KapatSweepParams): void {
-    kapatController.sweepParams = { ...kapatController.sweepParams, ...params }
+    // 'bisect_secant' is the only mode this UI can produce now -- drop
+    // anything else (e.g. 'grid' or plain 'bisect', saved by a profile
+    // from before either stopped being selectable) so a loaded profile
+    // can't silently switch a fresh sweep to a mode no longer offered.
+    const rest = { ...params }
+    if (rest.mode !== 'bisect_secant') delete rest.mode
+    kapatController.sweepParams = { ...kapatController.sweepParams, ...rest }
 }
 
 export function showConfirm(title: string, text: string): Promise<boolean> {

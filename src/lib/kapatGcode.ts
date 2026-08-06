@@ -26,10 +26,18 @@ export interface KapatSweepParams {
     // handleStart() for why this moved out of the web UI's own
     // orchestration.
     targetTemp?: number
-    // 'grid' (default, omitted from the command -- byte-identical to the
-    // pre-bisection command line) or 'bisect' (adds MODE=BISECT, KSTEP
-    // becomes a stop-tolerance rather than a grid step server-side).
-    mode?: 'grid' | 'bisect'
+    // 'bisect' (the UI's own default -- adds MODE=BISECT, KSTEP becomes
+    // a stop-tolerance rather than a grid step server-side, next probe
+    // is always the bracket's plain midpoint) or 'bisect_secant' (adds
+    // MODE=BISECT_SECANT instead -- same bracketing bisection, but each
+    // next probe is chosen by linear interpolation between the two
+    // endpoint values (regula falsi) rather than the midpoint; usually
+    // fewer probes on a roughly-linear integral_area-vs-K curve, opt-in
+    // via KapatSweepForm.vue's mode toggle, not the default). 'grid' is
+    // still accepted by the backend (omitted from the command, exactly
+    // like before bisection existed) but is no longer reachable from
+    // this UI at all -- see KapatSweepForm.vue.
+    mode?: 'grid' | 'bisect' | 'bisect_secant'
 }
 
 const PARAM_MAP: Record<string, string> = {
@@ -65,7 +73,9 @@ export function buildSweepCommand(params: KapatSweepParams): string {
     if (params.targetTemp != null) {
         parts.push(`TARGET_TEMP=${params.targetTemp}`)
     }
-    if (params.mode === 'bisect') {
+    if (params.mode === 'bisect_secant') {
+        parts.push('MODE=BISECT_SECANT')
+    } else if (params.mode === 'bisect') {
         parts.push('MODE=BISECT')
     }
     return parts.join(' ')

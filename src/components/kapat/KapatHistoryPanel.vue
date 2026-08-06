@@ -211,6 +211,7 @@ export default class KapatHistoryPanel extends Mixins(BaseMixin) {
     methodLabel(source?: string): string {
         if (!source) return '—'
         if (source === 'bd_pressure composite') return 'Composite'
+        if (source === 'integral-area (bisection, secant)') return 'Bisection (secant)'
         if (source === 'integral-area (bisection)') return 'Bisection'
         if (source === 'integral-area') return 'Integral-area'
         if (source === 'phase-lag') return 'Phase-lag'
