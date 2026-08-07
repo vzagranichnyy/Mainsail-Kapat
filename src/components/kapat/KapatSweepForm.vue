@@ -1,6 +1,17 @@
 <template>
     <panel :title="$t('Kapat.SweepForm.Title')" card-class="kapat-sweep-form" :margin-bottom="false" :collapsible="collapsible">
         <template #buttons>
+            <div class="kapat-mode-toggle mr-4">
+                <v-btn small :color="mode === 'grid' ? 'primary' : undefined" @click="onModeChange('grid')">
+                    {{ $t('Kapat.SweepForm.ModeGrid') }}
+                </v-btn>
+                <v-btn small :color="mode === 'bisect' ? 'primary' : undefined" @click="onModeChange('bisect')">
+                    {{ $t('Kapat.SweepForm.ModeBisect') }}
+                </v-btn>
+                <v-btn small :color="mode === 'bisect_secant' ? 'primary' : undefined" @click="onModeChange('bisect_secant')">
+                    {{ $t('Kapat.SweepForm.ModeBisectSecant') }}
+                </v-btn>
+            </div>
             <v-btn text small @click="resetDefaults">{{ $t('Kapat.SweepForm.Reset') }}</v-btn>
         </template>
         <v-card-text>
@@ -32,7 +43,7 @@
                     </div>
                     <div class="kapat-field">
                         <number-input
-                            :label="$t('Kapat.SweepForm.KStepBisect')"
+                            :label="mode === 'grid' ? $t('Kapat.SweepForm.KStep') : $t('Kapat.SweepForm.KStepBisect')"
                             param="kstep"
                             :target="params.kstep"
                             :min="0.001"
@@ -162,8 +173,22 @@ export default class KapatSweepForm extends Mixins(BaseMixin) {
     @Prop({ type: Boolean, default: false }) declare readonly collapsible: boolean
     @Prop({ type: Boolean, default: false }) declare readonly printerBusy: boolean
 
+    get mode(): 'grid' | 'bisect' | 'bisect_secant' {
+        return this.params.mode || 'bisect_secant'
+    }
+
     onSubmit({ name, value }: { name: string; value: number }): void {
         this.$emit('update:params', { ...this.params, [name]: value })
+    }
+
+    onModeChange(mode: 'grid' | 'bisect' | 'bisect_secant'): void {
+        this.$emit('update:params', { ...this.params, mode })
+        // Separate from `update:params` (params.sync only updates the
+        // live in-memory value, not persisted anywhere on its own) --
+        // this lets the parent additionally persist just the mode
+        // choice to settings.json, see kapatController.ts's
+        // setSweepMode().
+        this.$emit('update:mode', mode)
     }
 
     start(): void {
@@ -187,6 +212,22 @@ export default class KapatSweepForm extends Mixins(BaseMixin) {
 </script>
 
 <style scoped>
+/* Three plain v-btns (not a v-btn-toggle group) -- deliberately, so
+   they're pixel-identical in "type" to every other action button in
+   this project (Save/Delete/Apply etc.: plain v-btn, color="primary"
+   only when active). A v-btn-toggle group renders its children merged
+   edge-to-edge with reduced elevation/border-radius, which looked
+   visibly thinner/flatter than those buttons -- not worth fighting
+   that styling when plain v-btns already look right by construction.
+   flex here just gives the three equal width and even spacing. */
+.kapat-mode-toggle {
+    display: flex;
+    gap: 8px;
+}
+.kapat-mode-toggle .v-btn {
+    flex: 1 1 auto;
+}
+
 /* NumberInput's own internal `.v-input--has-state { margin-bottom: -18px
    !important }` collapses right through a plain margin-bottom placed on
    this wrapper, cancelling out the intended gap -- padding-bottom doesn't

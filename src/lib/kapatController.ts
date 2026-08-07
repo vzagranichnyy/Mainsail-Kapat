@@ -68,11 +68,11 @@ const DEFAULT_SWEEP_PARAMS: KapatSweepParams = {
     // UI now, same treatment GRID/Composite already got earlier).
     // Nothing in this UI can set `mode` to anything else -- see
     // KapatSweepForm.vue (no toggle left at all) and
-    // handleLoadParams() below, which strips `mode` from a loaded
-    // profile's saved params unless it's already 'bisect_secant'.
-    // Backend: klipper_extras/kapat/__init__.py's _next_bisect_probe();
-    // GRID and plain BISECT stay fully supported there via console/
-    // macro/API, this is UI-only.
+    // Full grid, plain-midpoint Bisection, and Secant are all reachable
+    // again via a 3-way toggle in KapatSweepForm.vue -- Secant is just
+    // the pre-selected default, per real live results showing it's the
+    // most reliable of the three. Backend:
+    // klipper_extras/kapat/__init__.py's _next_bisect_probe().
     mode: 'bisect_secant',
 }
 
@@ -352,11 +352,21 @@ export function ensureKapatController(store: Store<RootState>): void {
     kapatController.bridge
         .getData('settings')
         .then((res) => {
-            const s = (res?.value as { calibX?: number; calibY?: number; calibZ?: number; postGcode?: string }) || {}
+            const s =
+                (res?.value as {
+                    calibX?: number
+                    calibY?: number
+                    calibZ?: number
+                    postGcode?: string
+                    sweepMode?: string
+                }) || {}
             if (s.calibX !== undefined) kapatController.calibX = s.calibX
             if (s.calibY !== undefined) kapatController.calibY = s.calibY
             if (s.calibZ !== undefined) kapatController.calibZ = s.calibZ
             if (typeof s.postGcode === 'string') kapatController.postGcode = s.postGcode
+            if (s.sweepMode === 'grid' || s.sweepMode === 'bisect' || s.sweepMode === 'bisect_secant') {
+                kapatController.sweepParams = { ...kapatController.sweepParams, mode: s.sweepMode }
+            }
         })
         .catch(() => {})
     // 250ms, not 1s -- confirmed live that an artificially short test
@@ -385,13 +395,27 @@ export function ensureKapatController(store: Store<RootState>): void {
 }
 
 export function handleLoadParams(params: KapatSweepParams): void {
-    // 'bisect_secant' is the only mode this UI can produce now -- drop
-    // anything else (e.g. 'grid' or plain 'bisect', saved by a profile
-    // from before either stopped being selectable) so a loaded profile
-    // can't silently switch a fresh sweep to a mode no longer offered.
-    const rest = { ...params }
-    if (rest.mode !== 'bisect_secant') delete rest.mode
-    kapatController.sweepParams = { ...kapatController.sweepParams, ...rest }
+    kapatController.sweepParams = { ...kapatController.sweepParams, ...params }
+}
+
+// Persists the sweep-mode toggle's own selection immediately (like
+// postGcode/calibX,Y,Z) so it survives a page reload -- sweepParams as
+// a whole otherwise only persists via a saved filament profile's own
+// `params`, which most users won't have re-saved just to remember a
+// mode choice. Reuses the same settings.json object (a new
+// `sweepMode` field), so every field currently known to this
+// controller has to be included in the payload, same as any other
+// settings.json write -- it replaces the whole object, not a merge.
+export function setSweepMode(mode: 'grid' | 'bisect' | 'bisect_secant'): void {
+    kapatController.bridge
+        .setData('settings', {
+            calibX: kapatController.calibX,
+            calibY: kapatController.calibY,
+            calibZ: kapatController.calibZ,
+            postGcode: kapatController.postGcode,
+            sweepMode: mode,
+        })
+        .catch(() => {})
 }
 
 export function showConfirm(title: string, text: string): Promise<boolean> {

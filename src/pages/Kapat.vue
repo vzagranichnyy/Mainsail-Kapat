@@ -19,6 +19,7 @@
                     :printer-busy="printerIsPrinting"
                     :sweeping="sweeping"
                     :params.sync="controller.sweepParams"
+                    @update:mode="onModeChange"
                     @start="handleStart" />
             </v-col>
             <v-col cols="12" md="4">
@@ -99,6 +100,7 @@ import {
     handleLoadParams as controllerHandleLoadParams,
     onConfirmAction as controllerOnConfirmAction,
     onConfirmVisibleChange,
+    setSweepMode,
     KapatStatus,
 } from '@/lib/kapatController'
 
@@ -170,6 +172,10 @@ export default class PageKapat extends Mixins(BaseMixin) {
 
     handleLoadParams(params: KapatSweepParams): void {
         controllerHandleLoadParams(params)
+    }
+
+    onModeChange(mode: 'grid' | 'bisect' | 'bisect_secant'): void {
+        setSweepMode(mode)
     }
 
     handleStart(params: KapatSweepParams): void {

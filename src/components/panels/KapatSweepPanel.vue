@@ -7,6 +7,7 @@
             :sweeping="sweeping"
             :params.sync="controller.sweepParams"
             :collapsible="true"
+            @update:mode="onModeChange"
             @start="handleStart" />
         <confirmation-dialog
             v-model="controller.confirmVisible"
@@ -30,6 +31,7 @@ import {
     handleStart as controllerHandleStart,
     onConfirmAction as controllerOnConfirmAction,
     onConfirmVisibleChange,
+    setSweepMode,
 } from '@/lib/kapatController'
 
 // Dashboard-panel wrapper around <kapat-sweep-form> -- see
@@ -69,6 +71,10 @@ export default class KapatSweepPanel extends Mixins(BaseMixin) {
 
     handleStart(params: KapatSweepParams): void {
         controllerHandleStart(params)
+    }
+
+    onModeChange(mode: 'grid' | 'bisect' | 'bisect_secant'): void {
+        setSweepMode(mode)
     }
 }
 </script>
